@@ -189,7 +189,7 @@ then
     mkdir src
     cp -r ./Dependencies/ToolDAQFramework/src/main.cpp ./src/
     cp ./Dependencies/ToolDAQFramework/Application/* ./
-    git add DataModel/
+    git add DataModel/*
     git add UserTools/*
     git add configfiles/*
     git add ./Makefile

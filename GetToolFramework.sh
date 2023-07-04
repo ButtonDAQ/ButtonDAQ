@@ -75,7 +75,7 @@ then
     mkdir src
     cp ./Dependencies/ToolFrameworkCore/src/main.cpp ./src/
     cp ./Dependencies/ToolFrameworkCore/Application/* ./
-    git add DataModel/
+    git add DataModel/*
     git add UserTools/*
     git add configfiles/*
     git add ./Makefile

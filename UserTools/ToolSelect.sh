@@ -114,7 +114,10 @@ done` 2> tmptools
 	    touch Unity.h
 	    
 	    echo "#include \"Factory.h\"
+<<<<<<< HEAD
 #include \"Unity.h\"
+=======
+>>>>>>> 2e3051b (Initial commit)
 
 Tool* Factory(std::string tool) {
 Tool* ret=0;
