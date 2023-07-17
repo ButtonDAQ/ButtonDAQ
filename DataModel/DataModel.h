@@ -9,10 +9,12 @@
 //#include "TTree.h"
 
 #include "Store.h"
+#include "PSQLInterface.h"
 #include "BoostStore.h"
 #include "DAQLogging.h"
 #include "DAQUtilities.h"
 #include "SlowControlCollection.h"
+#include "TimeSlice.h"
 
 
 #include <zmq.hpp>
@@ -51,8 +53,9 @@ class DataModel {
   SlowControlCollection SC_vars; ///< calss for defining and handelling slow control variables
 
 
-  std::queue<TimeSlice> trigger_queue;
-  std::queue<TimeSlice> read_out_queue;
+  std::queue<TimeSlice*> pre_sort_queue;
+  std::map<trigger_type, std::queue<TimeSlice*> > trigger_queues;
+  std::queue<TimeSlice*> read_out_queue;
 
   //  bool (*Log)(std::string, int);
 
@@ -62,7 +65,9 @@ class DataModel {
       typedef bool (*type)(T message,int verboselevel);
     };
   */
- private:
+  PSQLInterface SQL;
+
+private:
 
 
   

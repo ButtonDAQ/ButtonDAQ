@@ -1,2 +1,6 @@
-///< Unity header to provide a clean Tool header list for factory and scripts ot add new Tools to
-#include "DummyTool.h"
+#include <DummyTool.h>
+#include <PGStarter.h>
+#include "Sorter.h"
+#include "NhitsTrigger.h"
+#include "CalibTrigger.h"
+#include "DataWriter.h"
