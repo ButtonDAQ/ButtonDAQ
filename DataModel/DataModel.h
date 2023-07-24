@@ -53,6 +53,8 @@ class DataModel {
   SlowControlCollection SC_vars; ///< calss for defining and handelling slow control variables
 
 
+  std::queue<std::vector<CAEN> > 
+
   std::queue<TimeSlice*> pre_sort_queue;
   std::map<trigger_type, std::queue<TimeSlice*> > trigger_queues;
   std::queue<TimeSlice*> read_out_queue;
