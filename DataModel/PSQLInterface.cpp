@@ -94,7 +94,7 @@ bool PSQLInterface::SendMonitoringData(std::string json_data, std::string device
   std::string err="";
   int timeout=300;
   std::string result;
-  std::string query_string="insert into monitoring (time, name, data) values (now(), '" + device + "', '" + json_data + "');";
+  std::string query_string="insert into monitoring (time, source, data) values (now(), '" + device + "', '" + json_data + "');";
 
   if(!SQLQuery(m_dbname , query_string, result, timeout, err)){
     std::cerr<<"SendMonitoringData error: "<<err<<std::endl;
