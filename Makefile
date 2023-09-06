@@ -13,7 +13,7 @@ ZMQInclude= -I $(Dependencies)/zeromq-4.0.7/include/
 BoostLib= -L $(Dependencies)/boost_1_66_0/install/lib -lboost_date_time -lboost_serialization -lboost_iostreams
 BoostInclude= -I $(Dependencies)/boost_1_66_0/install/include
 
-DataModelInclude = 
+DataModelInclude = -I submodules
 DataModelLib = 
 
 MyToolsInclude =
@@ -23,9 +23,9 @@ debug: all
 
 all: lib/libStore.so lib/libLogging.so lib/libDAQLogging.so lib/libDataModel.so include/Tool.h lib/libMyTools.so lib/libServiceDiscovery.so lib/libToolChain.so main RemoteControl  NodeDaemon
 
-main: src/main.cpp | lib/libMyTools.so lib/libStore.so lib/libLogging.so lib/libDAQLogging.so lib/libToolChain.so lib/libToolDAQChain.so lib/libDataModel.so lib/libServiceDiscovery.so
+main: src/main.cpp | lib/libMyTools.so lib/libStore.so lib/libLogging.so lib/libDAQLogging.so lib/libToolChain.so lib/libToolDAQChain.so lib/libDataModel.so lib/libServiceDiscovery.so lib/libcaen++.so
 	@echo -e "\e[38;5;226m\n*************** Making " $@ "****************\e[0m"
-	g++ $(CXXFLAGS) src/main.cpp -o main -I include -L lib -lStore -lMyTools -lToolChain -lToolDAQChain -lDataModel -lLogging -lDAQLogging -lServiceDiscovery -lpthread $(DataModelInclude) $(DataModelLib) $(MyToolsInclude)  $(MyToolsLib) $(ZMQLib) $(ZMQInclude)  $(BoostLib) $(BoostInclude)
+	g++ $(CXXFLAGS) src/main.cpp -o main -I include -L lib -lStore -lMyTools -lToolChain -lToolDAQChain -lDataModel -lLogging -lDAQLogging -lServiceDiscovery -lpthread -lCAENDigitizer -lcaen++ $(DataModelInclude) $(DataModelLib) $(MyToolsInclude)  $(MyToolsLib) $(ZMQLib) $(ZMQInclude)  $(BoostLib) $(BoostInclude)
 
 
 lib/libStore.so: $(Dependencies)/ToolDAQFramework/src/Store/* $(Dependencies)/ToolFrameworkCore/src/Store/*
@@ -68,6 +68,10 @@ lib/libDataModel.so: DataModel/* lib/libLogging.so lib/libDAQLogging.so lib/libS
 lib/libMyTools.so: UserTools/*/* UserTools/* include/Tool.h  lib/libLogging.so lib/libDAQLogging.so lib/libStore.so UserTools/Factory/Factory.o |lib/libDataModel.so
 	@echo -e "\e[38;5;226m\n*************** Making " $@ "****************\e[0m"
 	g++ $(CXXFLAGS) -shared UserTools/*/*.o -I include -L lib -lStore -lDataModel -lLogging -lDAQLogging -o lib/libMyTools.so $(MyToolsInclude) $(DataModelInclude) $(MyToolsLib) $(DataModelLib) $(ZMQLib) $(ZMQInclude) $(BoostLib) $(BoostInclude)
+
+lib/libcaen++.so: submodules/caen++/*
+	$(MAKE) -C submodules/caen++
+	cp submodules/caen++/libcaen++.so $@
 
 RemoteControl: $(Dependencies)/ToolDAQFramework/src/RemoteControl/* lib/libServiceDiscovery.so lib/libStore.so
 	cd $(Dependencies)/ToolDAQFramework/ && $(MAKE) RemoteControl
@@ -125,7 +129,7 @@ remove:
 DataModel/%.o: DataModel/%.cpp lib/libLogging.so lib/libDAQLogging.so lib/libStore.so
 	@echo -e "\e[38;5;226m\n*************** Making " $@ "****************\e[0m"
 	cp $(shell dirname $<)/*.h include
-	-g++ -c $(CXXFLAGS) -o $@ $< -I include -L lib -lStore -lLogging -lDAQLogging  $(DataModelInclude) $(DataModelLib) $(ZMQLib) $(ZMQInclude) $(BoostLib) $(BoostInclude)
+	g++ -c $(CXXFLAGS) -o $@ $< -I include -L lib -lStore -lLogging -lDAQLogging  $(DataModelInclude) $(DataModelLib) $(ZMQLib) $(ZMQInclude) $(BoostLib) $(BoostInclude)
 
 
 Docs:

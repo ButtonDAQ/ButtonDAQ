@@ -69,6 +69,10 @@ class DataModel {
   */
   PSQLInterface SQL;
 
+  // Readout of the digitizer data in the CAEN data format
+  std::queue<std::unique_ptr<std::vector<CAENEvent>>> raw_readout_queue;
+  std::mutex raw_readout_mutex;
+
 private:
 
 

@@ -1,0 +1,145 @@
+.PHONY: all depend clean distclean update
+
+Dependencies = Dependencies
+
+DataModelInclude =
+DataModelLib	 =
+
+MyToolsInclude = -I $(Dependencies)/caen/include -I submodules
+MyToolsLib     = -L $(Dependencies)/caen/lib
+
+ZMQLib     = -L $(Dependencies)/zeromq-4.0.7/lib -lzmq
+ZMQInclude = -isystem $(Dependencies)/zeromq-4.0.7/include
+
+BoostLib= -L $(Dependencies)/boost_1_66_0/install/lib -lboost_date_time \
+          -lboost_serialization -lboost_iostreams
+BoostInclude= -isystem $(Dependencies)/boost_1_66_0/install/include
+
+Lib     = -L lib $(DataModelLib) $(MyToolsLib) $(ZMQLib) $(BoostLib) $(LDFLAGS)
+Include = -I include $(DataModelInclude) $(MyToolsInclude) $(ZMQInclude) \
+          $(BoostInclude)
+
+tools = $(shell sed -n '/^\#include *"/{s,\.h",,; s,.*",,; p}' UserTools/Unity.h) template
+libs = Store MyTools ToolChain ToolDAQChain DataModel Logging DAQLogging \
+       ServiceDiscovery caen++
+
+CXXFLAGS = -std=c++11 -Wextra -O3 -fPIC
+
+# filled below
+headers =
+sources =
+
+all: main RemoteControl NodeDaemon
+
+main: src/main.o $(addprefix lib/lib,$(libs:=.so))
+	$(CXX) -o $@ $(CXXFLAGS) $< $(Lib) $(addprefix -l,$(libs)) -lpthread -lCAENDigitizer
+
+lib/libStore.so: $(Dependencies)/ToolDAQFramework/src/Store/* \
+  $(Dependencies)/ToolFrameworkCore/src/Store/*
+	$(MAKE) -C $(Dependencies)/ToolDAQFramework $@
+	cp $(Dependencies)/ToolDAQFramework/lib/libStore.so lib/
+
+define defheader
+headers += $1
+$1: $2
+	cp $$< $$@
+endef
+
+defheader1 = $(if $(filter $1,$(headers)),,$(eval $(call defheader,$1,$2)))
+defheaders = $(foreach header,$(wildcard $1), \
+	         $(call defheader1,include/$(notdir $(header)),$(header)))
+
+$(call defheaders,$(Dependencies)/ToolDAQFramework/src/Store/*.h)
+$(call defheaders,$(Dependencies)/ToolFrameworkCore/src/Store/*.h)
+
+$(call defheaders,$(Dependencies)/ToolFrameworkCore/src/Tool/Tool.h)
+
+lib/libDataModel.so: $(patsubst %.cpp,%.o,$(wildcard DataModel/*.cpp)) \
+  lib/libStore.so lib/libLogging.so lib/libDAQLogging.so
+	$(CXX) -o $@ $(CXXFLAGS) -shared DataModel/*.o -lStore -lLogging -lDAQLogging $(Lib)
+
+lib/libMyTools.so: \
+  UserTools/Factory/Factory.o \
+  $(foreach tool,$(tools), \
+      $(patsubst %.cpp,%.o,$(wildcard UserTools/$(tool)/*.cpp))) \
+  lib/libStore.so \
+  lib/libLogging.so \
+  lib/libDAQLogging.so \
+  lib/libDataModel.so
+	$(CXX) -o $@ $(CXXFLAGS) -shared UserTools/Factory/Factory.o $(foreach tool,$(tools),UserTools/$(tool)/*.o) $(Lib) -lStore -lDataModel -lLogging -lDAQLogging
+
+define defToolChainLib
+sources += src/$2.cpp
+$$(call defheaders,$$(Dependencies)/$1/src/$2/$2.h)
+src/$2.cpp: $$(Dependencies)/$1/src/$2/$2.cpp
+	cp $$< $$@
+
+lib/lib$2.so: src/$2.o lib/libLogging.so lib/libDAQLogging.so lib/libStore.so \
+  lib/libMyTools.so lib/libServiceDiscovery.so lib/libDataModel.so \
+  $(addprefix lib/lib,$(addsuffix .so,$3))
+	$$(CXX) -o $$@ $$(CXXFLAGS) -shared src/$2.o -lpthread -lStore -lDataModel -lServiceDiscovery -lLogging -lDAQLogging -lMyTools $(addprefix -l,$3) $$(Lib)
+endef
+
+$(eval $(call defToolChainLib,ToolFrameworkCore,ToolChain))
+$(eval $(call defToolChainLib,ToolDAQFramework,ToolDAQChain,ToolChain))
+
+define defDAQLib
+$$(call defheaders,$$(Dependencies)/$1/src/$2/$2.h)
+lib/lib$2.so: $$(Dependencies)/$1/src/$2/* | lib/libStore.so
+	$$(MAKE) -C $$(Dependencies)/ToolDAQFramework $$@
+	cp $$(Dependencies)/ToolDAQFramework/lib/lib$2.so lib/
+endef
+
+$(eval $(call defDAQLib,ToolDAQFramework,ServiceDiscovery))
+$(eval $(call defDAQLib,ToolFrameworkCore,Logging))
+$(eval $(call defDAQLib,ToolDAQFramework,DAQLogging))
+
+define defDAQProgram
+$1: $$(Dependencies)/ToolDAQFramework/src/$1/* \
+  lib/libServiceDiscovery.so lib/libStore.so
+	$$(MAKE) -C $$(Dependencies)/ToolDAQFramework $1
+	cp $$(Dependencies)/ToolDAQFramework/$1 .
+endef
+
+$(eval $(call defDAQProgram,RemoteControl))
+$(eval $(call defDAQProgram,NodeDaemon))
+
+$(call defheaders,$(Dependencies)/ToolFrameworkCore/src/Tool/Tool.h)
+$(call defheaders,DataModel/*.h UserTools/*.h UserTools/*/*.h)
+
+lib/libcaen++.so: submodules/caen++/*
+	$(MAKE) -C submodules/caen++
+	cp submodules/caen++/libcaen++.so $@
+
+%.o: %.cpp
+	$(CXX) -o $@ $(CXXFLAGS) -c $< $(Include)
+
+%.d: %.cpp $(headers)
+	$(CXX) -MM $< -MT '$*.o $@' $(CXXFLAGS) $(Include) > $@ || { rm $@; false; }
+
+sources += $(foreach d,src DataModel UserTools UserTools/*,$(wildcard $d/*.cpp))
+
+depend: $(sources:.cpp=.d)
+	@true
+
+ifneq ($(MAKECMDGOALS),clean)
+  ifneq ($(MAKECMDGOALS),distclean)
+    -include $(sources:.cpp=.d)
+  endif
+endif
+
+Docs:
+	doxygen Doxyfile
+
+clean: 
+	-rm include/*.h lib/*.so main RemoteControl NodeDaemon src/ToolChain.cpp src/ToolDAQChain.cpp $(sources:.cpp=.o) $(sources:.cpp=.d) 2> /dev/null; true
+
+distclean: clean
+	$(MAKE) -C $(Dependencies)/ToolDAQFramework clean
+	$(MAKE) -C submodules/caen++ clean
+
+update:
+	cd $(Dependencies)/ToolFrameworkCore; git pull
+	cd $(Dependencies)/ToolDAQFramework; git pull
+	cd $(Dependencies)/zeromq-4.0.7; git pull
+	git pull
