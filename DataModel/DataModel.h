@@ -53,11 +53,8 @@ class DataModel {
   SlowControlCollection SC_vars; ///< calss for defining and handelling slow control variables
 
 
-  std::queue<std::vector<CAEN> > 
-
   std::queue<TimeSlice*> pre_sort_queue;
   std::map<trigger_type, std::queue<TimeSlice*> > trigger_queues;
-  std::queue<TimeSlice*> read_out_queue;
 
   //  bool (*Log)(std::string, int);
 
@@ -68,6 +65,20 @@ class DataModel {
     };
   */
   PSQLInterface SQL;
+
+  // True if the corresponding digitizer is active (no communication error
+  // experienced). The stored values are actually booleans, but we cannot use
+  // std::vector<bool> here because we need to be able to take addresses of its
+  // elements.
+  std::vector<uint8_t> active_digitizers;
+
+  // Readout of the digitizer data in the CAEN data format
+  std::unique_ptr<std::list<std::unique_ptr<std::vector<Hit>>>> raw_readout;
+  std::mutex raw_readout_mutex;
+
+  // Readout reformatted in terms of timeslices and hits
+  std::queue<std::unique_ptr<TimeSlice>> readout;
+  std::mutex readout_mutex;
 
 private:
 

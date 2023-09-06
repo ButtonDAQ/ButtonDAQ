@@ -8,3 +8,4 @@ Dependencies
 main
 *.d
 *.root
+.*.sw?

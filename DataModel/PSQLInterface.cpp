@@ -94,7 +94,7 @@ bool PSQLInterface::SendMonitoringData(std::string json_data, std::string device
   std::string err="";
   int timeout=300;
   std::string result;
-  std::string query_string="insert into monitoring (time, name, data) values (now(), '" + device + "', '" + json_data + "');";
+  std::string query_string="insert into monitoring (time, source, data) values (now(), '" + device + "', '" + json_data + "');";
 
   if(!SQLQuery(m_dbname , query_string, result, timeout, err)){
     std::cerr<<"SendMonitoringData error: "<<err<<std::endl;
@@ -132,12 +132,15 @@ bool PSQLInterface::GetConfig(std::string& json_data, int version, std::string d
 
   int timeout=300;
   std::string err="";
-  std::string query= "select data from configurations";// where name='"+ device + "' and version=" + std::to_string(version) +");";
+  std::string query= "select data from configurations where name='"+ device + "' and version=" + std::to_string(version) +";";
   
 if(!SQLQuery(m_dbname, query, json_data, timeout, err)){
     std::cerr<<"GetConfig error: "<<err<<std::endl;
     return false;
   }
+
+ json_data.replace(0,9,"");
+ json_data.replace(json_data.end()-2, json_data.end(),""); 
 
   return true;
 

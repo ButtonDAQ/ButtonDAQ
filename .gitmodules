@@ -1,3 +1,6 @@
 [submodule "UserTools/ImportedTools/TDToolPack"]
 	path = UserTools/ImportedTools/TDToolPack
 	url = https://github.com/ToolDAQ/TDToolPack.git
+[submodule "submodules/caen++"]
+	path = submodules/caen++
+	url = https://github.com/jini-zh/caenpp
