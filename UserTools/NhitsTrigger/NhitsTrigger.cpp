@@ -9,12 +9,8 @@ NhitsTrigger::NhitsTrigger():Tool(){}
 
 
 bool NhitsTrigger::Initialise(std::string configfile, DataModel &data){
-
-  if(configfile!="")  m_variables.Initialise(configfile);
-  //m_variables.Print();
-
-  m_data= &data;
-  m_log= m_data->Log;
+  InitialiseTool(data);
+  InitialiseConfiguration(configfile);
 
   if(!m_variables.Get("verbose",m_verbose)) m_verbose=1;
 
@@ -24,9 +20,8 @@ bool NhitsTrigger::Initialise(std::string configfile, DataModel &data){
   CreateThread();
   
   m_freethreads=1;
-  
-    
-  
+
+  ExportConfiguration();
   return true;
 }
 

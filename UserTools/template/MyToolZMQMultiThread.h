@@ -5,6 +5,9 @@
 #include <iostream>
 
 #include "Tool.h"
+#include "DAQUtilities.h"
+
+using namespace ToolFramework;
 
 /**
  * \struct ZMQMyToolMultiThread_args

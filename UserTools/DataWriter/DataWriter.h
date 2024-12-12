@@ -6,6 +6,8 @@
 
 #include "Tool.h"
 
+using namespace ToolFramework;
+
 /**
  * \struct DataWriter_args_args
  *

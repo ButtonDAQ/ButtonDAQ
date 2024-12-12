@@ -5,6 +5,7 @@
 #include <iostream>
 
 #include "Tool.h"
+#include "DataModel.h"
 
 /**
  * \class DummyTool
@@ -28,7 +29,6 @@ class DummyTool: public Tool {
 
  private:
 
-  int m_verbose;
 
 };
 

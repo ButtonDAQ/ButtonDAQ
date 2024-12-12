@@ -5,7 +5,6 @@ Tool* ret=0;
 
 // if (tool=="Type") tool=new Type;
 if (tool=="DummyTool") ret=new DummyTool;
-if (tool=="PGStarter") ret=new PGStarter;
 if (tool=="Sorter") ret=new Sorter;
 if (tool=="NhitsTrigger") ret=new NhitsTrigger;
 if (tool=="CalibTrigger") ret=new CalibTrigger;

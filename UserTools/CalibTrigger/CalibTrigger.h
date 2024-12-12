@@ -5,6 +5,9 @@
 #include <iostream>
 
 #include "Tool.h"
+#include "Utilities.h"
+
+using namespace ToolFramework;
 
 /**
  * \struct CalibTrigger_args
