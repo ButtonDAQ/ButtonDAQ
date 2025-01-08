@@ -13,6 +13,8 @@
 
 class Digitizer: public ToolFramework::Tool {
   public:
+    ~Digitizer() { Finalise(); }
+
     bool Initialise(std::string configfile, DataModel&);
     bool Execute();
     bool Finalise();
@@ -20,44 +22,59 @@ class Digitizer: public ToolFramework::Tool {
   private:
     struct Board {
       uint8_t                                                      id;
+      bool                                                         active;
       caen::Digitizer                                              digitizer;
       caen::Digitizer::ReadoutBuffer                               buffer;
       caen::Digitizer::DPPEvents<CAEN_DGTZ_DPP_PSD_Event_t>        events;
       caen::Digitizer::DPPWaveforms<CAEN_DGTZ_DPP_PSD_Waveforms_t> waveforms;
     };
 
-    struct ReadoutThread : ToolFramework::Thread_args {
-      Digitizer& tool;
-      std::vector<Board*> digitizers;
-
-      ReadoutThread(Digitizer& tool): tool(tool) {};
+    struct ReadoutThread {
+      std::vector<Board*> boards;
+      std::thread thread;
     };
 
-    struct MonitorThread : ToolFramework::Thread_args {
-      Digitizer& tool;
-      std::chrono::seconds interval;
+    class Monitor {
+      public:
+        Monitor(
+            ToolFramework::Services&  services,
+            const std::vector<Board>& boards,
+            std::chrono::seconds      interval
+        );
+        ~Monitor();
 
-      MonitorThread(Digitizer& tool): tool(tool) {};
+        void set_interval(std::chrono::seconds);
+
+      private:
+        ToolFramework::Services&  services;
+        const std::vector<Board>& boards;
+        std::chrono::seconds      interval;
+        std::thread               thread;
+        std::timed_mutex          mutex;
+
+        void start();
+        void stop();
+
+        void monitor();
     };
-
-    ToolFramework::Utilities util;
-    std::vector<ReadoutThread> threads;
 
     std::vector<Board> digitizers;
     uint16_t nsamples; // number of samples in waveforms
 
     bool acquiring = false;
+    std::vector<ReadoutThread> readout_threads;
 
-    MonitorThread* monitor = nullptr;
+    std::unique_ptr<Monitor> monitor;
 
     void connect();
+    void disconnect();
     void configure();
-    void run_readout();
-    void run_monitor();
-    void readout(Board&);
 
-    static void readout_thread(ToolFramework::Thread_args*);
-    static void monitor_thread(ToolFramework::Thread_args*);
+    void start_acquisition();
+    void stop_acquisition();
+
+    void readout(Board&);
+    void readout(const std::vector<Board*>&);
 
     ToolFramework::Logging& log(int level) {
       return *m_log << ToolFramework::MsgL(level, m_verbose);

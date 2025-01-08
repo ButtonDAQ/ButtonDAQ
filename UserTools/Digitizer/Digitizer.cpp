@@ -4,11 +4,67 @@
 
 #include "Digitizer.h"
 
+Digitizer::Monitor::Monitor(
+    ToolFramework::Services& services,
+    const std::vector<Board>& boards,
+    std::chrono::seconds     interval
+): services(services), boards(boards), interval(interval)
+{
+  start();
+};
+
+Digitizer::Monitor::~Monitor() {
+  stop();
+};
+
+void Digitizer::Monitor::monitor() {
+  do {
+    Store data;
+    int b = 0;
+    for (auto& board : boards) {
+      auto prefix = "digitizer_" + std::to_string(b++);
+      for (unsigned c = 0; c < 16; ++c)
+        data.Set(
+            prefix + "_channel_" + std::to_string(c) + "_temperature",
+            board.digitizer.readTemperature(c)
+        );
+    };
+
+    std::string json;
+    data >> json;
+    services.SendMonitoringData(std::move(json), "Digitizer");
+
+    // Locking a mutex seems to be the simplest way to implement an
+    // interruptible sleep in C++11
+  } while (!mutex.try_lock_for(interval));
+  mutex.unlock();
+};
+
+void Digitizer::Monitor::start() {
+  mutex.lock();
+  thread = std::thread(&Digitizer::Monitor::monitor, this);
+};
+
+void Digitizer::Monitor::stop() {
+  mutex.unlock();
+  thread.join();
+};
+
+void Digitizer::Monitor::set_interval(std::chrono::seconds interval) {
+  if (interval != this->interval) return;
+  stop();
+  this->interval = interval;
+  start();
+};
+
 void Digitizer::connect() {
   std::stringstream ss;
   std::string string;
   std::string link_string;
-  std::unordered_map<int, ReadoutThread*> thread_partition;
+
+  // link_arg -> indices of digitizers to be read out in the same thread
+  std::unordered_map<uint32_t, std::list<int>> threads_partition;
+
   for (int i = 0; ; ++i) {
     ss.str({});
     ss << "digitizer_" << i << "_link";
@@ -70,6 +126,7 @@ void Digitizer::connect() {
     digitizers.emplace_back(
         Board {
           static_cast<uint8_t>(i),
+          false,
           caen::Digitizer(link, arg, conet, vme),
           caen::Digitizer::ReadoutBuffer(),
           caen::Digitizer::DPPEvents<CAEN_DGTZ_DPP_PSD_Event_t>(),
@@ -78,14 +135,13 @@ void Digitizer::connect() {
     );
     info() << "success" << std::endl;
 
-    m_data->active_digitizers.push_back(0);
-
-    auto thread = thread_partition.find(arg);
-    if (thread == thread_partition.end()) {
-      threads.emplace_back(*this);
-      thread = thread_partition.emplace(arg, &threads.back()).first;
+    {
+      auto partition = threads_partition.find(arg);
+      if (partition == threads_partition.end())
+        threads_partition.emplace(std::pair<uint32_t, std::list<int>>(arg, { i }));
+      else
+        partition->second.push_back(i);
     };
-    thread->second->digitizers.push_back(&digitizers.back());
 
     if (m_verbose > 2) {
       auto& i = digitizers.back().digitizer.info();
@@ -99,7 +155,22 @@ void Digitizer::connect() {
         << "license: " << i.License << std::endl;
     };
   };
+
+  readout_threads.reserve(threads_partition.size());
+  for (auto& partitions : threads_partition) {
+    std::vector<Board*> boards;
+    boards.reserve(partitions.second.size());
+    for (int i : partitions.second) boards.push_back(&digitizers[i]);
+    ReadoutThread thread;
+    thread.boards = std::move(boards);
+    readout_threads.push_back(std::move(thread));
+  };
 }
+
+void Digitizer::disconnect() {
+  readout_threads.clear();
+  digitizers.clear();
+};
 
 void Digitizer::configure() {
   CAEN_DGTZ_DPP_PSD_Params_t params;
@@ -171,6 +242,8 @@ void Digitizer::configure() {
   int pre_trigger_size = 0;
   m_variables.Get("pre_trigger_size", pre_trigger_size);
 
+  m_data->enabled_digitizer_channels.resize(digitizers.size());
+
   std::string string;
   int i = 0;
   for (auto& board : digitizers) {
@@ -202,6 +275,8 @@ void Digitizer::configure() {
       );
 
     digitizer.setChannelEnableMask(channels);
+    m_data->enabled_digitizer_channels[i] = channels;
+
     if (waveforms)
       for (uint32_t channel = 0; channel < 16; channel += 2)
         if (channels & 3 << channel)
@@ -231,26 +306,54 @@ void Digitizer::configure() {
     if (waveforms) board.waveforms.allocate(digitizer);
 
     info() << "success" << std::endl;
+
+    ++i;
   };
+
+  i = 60;
+  m_variables.Get("monitor_interval", i);
+  auto interval = std::chrono::seconds(i);
+  if (monitor)
+    monitor->set_interval(interval);
+  else if (m_data->services)
+    monitor.reset(new Monitor(*m_data->services, digitizers, interval));
 }
 
-void Digitizer::run_readout() {
-  std::stringstream ss;
-  for (size_t i = 0; i < threads.size(); ++i) {
-    ss.str({});
-    ss << "Digitizer " << i;
-    util.CreateThread(ss.str(), &readout_thread, &threads[i]);
+void Digitizer::start_acquisition() {
+  acquiring = true;
+  for (auto& rt : readout_threads) {
+    for (auto board : rt.boards) {
+      info()
+        << "starting acquisition on digitizer "
+        << static_cast<int>(board->id)
+        << std::endl;
+      board->digitizer.SWStartAcquisition();
+      board->active = true;
+    };
+    rt.thread = std::thread(
+        static_cast<void (Digitizer::*)(const std::vector<Board*>&)>(
+          &Digitizer::readout
+        ),
+        this,
+        rt.boards
+    );
   };
-}
+};
 
-void Digitizer::run_monitor() {
-  if (!m_data->services) return;
-  int interval = 5;
-  m_variables.Get("digitizer_interval", interval);
-  monitor = new MonitorThread(*this);
-  monitor->interval = std::chrono::seconds(interval);
-  util.CreateThread("Digitizer monitor", &monitor_thread, monitor);
-}
+void Digitizer::stop_acquisition() {
+  acquiring = false;
+  for (auto& rt : readout_threads) {
+    rt.thread.join();
+    for (auto board : rt.boards) {
+      info()
+        << "stopping acquisition on digitizer "
+        << static_cast<int>(board->id)
+        << std::endl;
+      board->digitizer.SWStopAcquisition();
+      board->active = false;
+    };
+  };
+};
 
 // Read data from the board and put it into m_data.raw_readout
 void Digitizer::readout(Board& board) {
@@ -275,8 +378,7 @@ void Digitizer::readout(Board& board) {
          event != board.events.end(channel);
          ++event)
     {
-      hit->time         = static_cast<uint64_t>(event->TimeTag) << 32
-                        | event->Extras;
+      hit->time         = Time(event->TimeTag, event->Extras);
       hit->charge_short = event->ChargeShort;
       hit->charge_long  = event->ChargeLong;
 #if 0
@@ -305,43 +407,25 @@ void Digitizer::readout(Board& board) {
   m_data->raw_readout->push_back(std::move(hits));
 }
 
-void Digitizer::readout_thread(Thread_args* arg) {
-  ReadoutThread* args = static_cast<ReadoutThread*>(arg);
-  Digitizer& tool = args->tool;
-  DataModel& data = *tool.m_data;
-  try {
-    for (auto digitizer : args->digitizers)
-      if (data.active_digitizers[digitizer->id])
+void Digitizer::readout(const std::vector<Board*>& boards) {
+  int active = 0;
+  for (auto board : boards) if (board->active) ++active;
+
+  while (acquiring && active > 0)
+    for (auto board : boards)
+      if (board->active)
         try {
-          tool.readout(*digitizer);
-        } catch (caen::Digitizer::Error&) {
-          data.active_digitizers[digitizer->id] = 0;
-          throw;
+          readout(*board);
+        } catch (caen::Digitizer::Error& error) {
+          this->error()
+            << "digitizer "
+            << static_cast<int>(board->id)
+            << ": "
+            << error.what()
+            << std::endl;
+          board->active = false;
+          --active;
         };
-  } catch (std::exception& e) {
-    tool.error() << e.what() << std::endl;
-  };
-}
-
-void Digitizer::monitor_thread(Thread_args* arg) {
-  auto monitor = static_cast<MonitorThread*>(arg);
-
-  Store data;
-  int b = 0;
-  for (auto& board : monitor->tool.digitizers) {
-    auto bprefix = "digitizer_" + std::to_string(b++);
-    for (unsigned c = 0; c < 16; ++c)
-      data.Set(
-          bprefix + "_channel_" + std::to_string(c) + "_temperature",
-          board.digitizer.readTemperature(c)
-      );
-  };
-
-  std::string json;
-  data >> json;
-  monitor->tool.m_data->services->SendMonitoringData(std::move(json), "Digitizer");
-
-  std::this_thread::sleep_for(monitor->interval);
 };
 
 bool Digitizer::Initialise(std::string configfile, DataModel &data) {
@@ -352,48 +436,43 @@ bool Digitizer::Initialise(std::string configfile, DataModel &data) {
 
   connect();
   configure();
-  run_readout();
-  run_monitor();
 
   ExportConfiguration();
   return true;
 };
 
 bool Digitizer::Execute() {
-  if (!acquiring) {
-    acquiring = true;
-    for (auto& board : digitizers) {
-      info()
-        << "starting acquisition on digitizer "
-        << static_cast<int>(board.id)
-        << std::endl;
-      board.digitizer.SWStartAcquisition();
-      m_data->active_digitizers[board.id] = 1;
-    };
+  if (digitizers.empty()) return true;
+
+  if (m_data->run_stop && acquiring) stop_acquisition();
+
+  if (m_data->change_config) {
+    bool acq = acquiring;
+    if (acq) stop_acquisition();
+
+    InitialiseConfiguration();
+
+    disconnect();
+
+    connect();
+    configure();
+
+    if (acq) start_acquisition();
   };
 
+  if (m_data->run_start && !acquiring) start_acquisition();
+
   return true;
-}
+};
 
 bool Digitizer::Finalise() {
   if (monitor) {
-    util.KillThread(monitor);
-    delete monitor;
+    delete monitor.release();
     monitor = nullptr;
   };
 
-  for (auto& thread : threads) util.KillThread(&thread);
-  threads.clear();
-
-  for (auto& board : digitizers) {
-    info()
-      << "stopping acquisition on digitizer "
-      << static_cast<int>(board.id)
-      << std::endl;
-    board.digitizer.SWStopAcquisition();
-    m_data->active_digitizers[board.id] = 0;
-  };
-  digitizers.clear(); // disconnect from the digitizers
+  if (acquiring) stop_acquisition();
+  disconnect();
 
   return true;
 }

@@ -40,6 +40,10 @@ class DataModel : public DAQDataModelBase {
   
   DataModel(); ///< Simple constructor 
 
+  bool run_start     = false;
+  bool run_stop      = false;
+  bool change_config = false;
+
   //TTree* GetTTree(std::string name);
   //void AddTTree(std::string name,TTree *tree);
   //void DeleteTTree(std::string name,TTree *tree);
@@ -47,11 +51,9 @@ class DataModel : public DAQDataModelBase {
   std::queue<TimeSlice*> pre_sort_queue;
   std::map<trigger_type, std::queue<TimeSlice*> > trigger_queues;
 
-  // True if the corresponding digitizer is active (no communication error
-  // experienced). The stored values are actually booleans, but we cannot use
-  // std::vector<bool> here because we need to be able to take addresses of its
-  // elements.
-  std::vector<uint8_t> active_digitizers;
+  // Describes which digitizers channels are enabled. Set by Digitizer, used by
+  // Reformatter to sync channels data at the beginning of the readout.
+  std::vector<uint16_t> enabled_digitizer_channels;
 
   // Readout of the digitizer data in the CAEN data format
   std::unique_ptr<std::list<std::unique_ptr<std::vector<Hit>>>> raw_readout;

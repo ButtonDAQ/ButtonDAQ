@@ -9,68 +9,48 @@
 class Reformatter: public ToolFramework::Tool {
   public:
     Reformatter();
+    ~Reformatter() { Finalise(); };
 
     bool Initialise(std::string configfile, DataModel& data);
     bool Execute();
     bool Finalise();
 
   private:
-    struct ThreadArgs : Thread_args {
-      struct Channel {
-        // hit times available in next or readout
-        uint64_t min;
-        uint64_t max;
-
-        // pointer to the digitizer status (see DataModel::active_digitizers)
-        uint8_t* digitizer_active;
-
-        // we have or expect to have data in this channel
-        // (we have seen events coming from this channel and the channel
-        // digitizer is not marked as inactive)
-        bool active;
-      };
-
-      Reformatter& tool;
-
-      std::unique_ptr<std::vector<Hit>> current;
-      std::unique_ptr<std::vector<Hit>> next;
-
-      std::vector<
-        std::unique_ptr<
-          std::list<
-            std::unique_ptr<
-              std::vector<Hit>
-            >
-          >
-        >
-      > readouts;
-
-      std::vector<Channel> channels;
-
-      // time of the earliest hit in next or readout (min(channels.min))
-      uint64_t time_min = std::numeric_limits<uint64_t>().max();
-      // time of the latest hit in next or readout (max(channels.max))
-      uint64_t time_max = 0;
-
-      ThreadArgs(Reformatter& tool):
-        tool(tool),
-        current(new std::vector<Hit>()),
-        next(new std::vector<Hit>())
-      {};
-
-      ~ThreadArgs();
-
-      void send(const std::vector<Hit>& hits);
-      void execute();
+    struct Channel {
+      Time time; // time of the last hit in the channel
+      bool active; // whether we expect hits in the channel
     };
 
+    std::vector<Channel> channels;
+
+    std::vector<Hit> buffer;
+
+    std::vector<
+      std::unique_ptr<
+        std::list<
+          std::unique_ptr<
+            std::vector<Hit>
+          >
+        >
+      >
+    > readouts;
+
     // target timeslice length
-    uint64_t interval;
+    Time interval;
 
-    Utilities util;
-    ThreadArgs* thread;
+    // max time to wait for data from a channel
+    Time dead_time;
 
-    static void Thread(Thread_args*);
+    bool reformatting = false;
+    std::thread thread;
+
+    void configure();
+
+    void start_reformatting();
+    void stop_reformatting();
+
+    void send_timeslice(Time time, std::vector<Hit>& hits);
+    void reformat();
 };
 
 #endif
