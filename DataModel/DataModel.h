@@ -14,7 +14,6 @@
 #include "DAQLogging.h"
 #include "DAQUtilities.h"
 #include "TimeSlice.h"
-#include "Hit.h"
 
 
 #include <zmq.hpp>
@@ -43,14 +42,28 @@ class DataModel : public DAQDataModelBase {
   bool run_start     = false;
   bool run_stop      = false;
   bool change_config = false;
+  bool running;
+  bool load_config;
+  bool sub_run;
+
+  boost::posix_time::ptime start_time;
+  unsigned long run_number;
+  unsigned long sub_run_number;
+  unsigned int run_configuration;
+  
+  unsigned int thread_num;
+  unsigned int thread_cap;
+  
+  JobQueue job_queue;
+  
+  std::mutex monitoring_store_mtx;
+  Store monitoring_store;
+  
 
   //TTree* GetTTree(std::string name);
   //void AddTTree(std::string name,TTree *tree);
   //void DeleteTTree(std::string name,TTree *tree);
   
-  std::queue<TimeSlice*> pre_sort_queue;
-  std::map<trigger_type, std::queue<TimeSlice*> > trigger_queues;
-
   // Describes which digitizers channels are enabled. Set by Digitizer, used by
   // Reformatter to sync channels data at the beginning of the readout.
   std::vector<uint16_t> enabled_digitizer_channels;
@@ -62,6 +75,18 @@ class DataModel : public DAQDataModelBase {
   // Readout reformatted in terms of timeslices and hits
   std::queue<std::unique_ptr<TimeSlice>> readout;
   std::mutex readout_mutex;
+
+  std::queue<std::unique_ptr<TimeSlice>> sorted_readout;
+  std::mutex sorted_readout_mutex;
+
+  std::queue<std::unique_ptr<TimeSlice>> triggered_readout;
+  std::mutex triggered_readout_mutex;
+
+  std::queue<std::unique_ptr<TimeSlice>> final_readout;
+  std::mutex final_readout_mutex;
+
+  std::vector<size_t> channel_hits;
+  
 
 private:
 

@@ -5,6 +5,7 @@
 #include <iostream>
 
 #include "Tool.h"
+#include <DataModel.h>
 
 using namespace ToolFramework;
 
@@ -22,9 +23,14 @@ struct Sorter_args:Thread_args{
 
   Sorter_args();
   ~Sorter_args();
-  bool busy;
-  std::string message;
-
+  DataModel* m_data;
+  std::queue<std::unique_ptr<TimeSlice>>* readout;
+  std::mutex* readout_mutex;
+  std::queue<std::unique_ptr<TimeSlice>>* sorted_readout;
+  std::mutex* sorted_readout_mutex;
+  std::queue<std::unique_ptr<TimeSlice>> in_progress;
+  std::unique_ptr<TimeSlice> time_slice;
+  
 };
 
 /**
@@ -55,10 +61,12 @@ class Sorter: public Tool {
   static void Thread(Thread_args* arg); ///< Function to be run by the thread in a loop. Make sure not to block in it
   Utilities* m_util; ///< Pointer to utilities class to help with threading
   std::vector<Sorter_args*> args; ///< Vector of thread args (also holds pointers to the threads)
-
   int m_freethreads; ///< Keeps track of free threads
   unsigned long m_threadnum; ///< Counter for unique naming of threads
 
+  static bool SortData(void* data);
+  static void FailSort(void* data);
+  
 };
 
 

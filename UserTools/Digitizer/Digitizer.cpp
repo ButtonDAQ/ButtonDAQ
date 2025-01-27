@@ -262,7 +262,8 @@ void Digitizer::configure() {
       channels = mask;
     };
 
-    digitizer.reset();
+    // digitizer.reset();
+    digitizer.clearData();
 
     digitizer.setDPPAcquisitionMode(
         waveforms ? CAEN_DGTZ_DPP_ACQ_MODE_Mixed : CAEN_DGTZ_DPP_ACQ_MODE_List,
@@ -357,6 +358,7 @@ void Digitizer::stop_acquisition() {
 
 // Read data from the board and put it into m_data.raw_readout
 void Digitizer::readout(Board& board) {
+  board.digitizer.sendSWTrigger(); // FIXME: software trigger for testing
   board.digitizer.readData(CAEN_DGTZ_SLAVE_TERMINATED_READOUT_MBLT, board.buffer);
   if (board.digitizer.getNumEvents(board.buffer) == 0) return;
 
@@ -442,8 +444,6 @@ bool Digitizer::Initialise(std::string configfile, DataModel &data) {
 };
 
 bool Digitizer::Execute() {
-  if (digitizers.empty()) return true;
-
   if (m_data->run_stop && acquiring) stop_acquisition();
 
   if (m_data->change_config) {
@@ -451,6 +451,8 @@ bool Digitizer::Execute() {
     if (acq) stop_acquisition();
 
     InitialiseConfiguration();
+    if (!m_variables.Get("verbose", m_verbose)) m_verbose = 1;
+
 
     disconnect();
 

@@ -3,11 +3,13 @@
 
 #include <cstdint>
 
+using namespace ToolFramework;
+
 // Stores time in 64 bits as a fixed point value with 1/512 ns precision.
 // Bits 10 to 64 store an integer number of ticks, each tick is 2 ns.
 // Bits 0 to 9 store sub-ns fraction.
 // CAEN digitizer time range is 57 bits in this format.
-class Time {
+class Time : SerialisableObject{
   public:
     Time(): time(0) {};
     Time(const Time& t): time(t.time) {};
@@ -30,8 +32,10 @@ class Time {
       time <<= 10;
       time |= extras & 0x3ff; // bits 0 to 9
     };
+  
+  Time(uint64_t time): time(time) {}
 
-    double seconds() const {
+  double seconds() const {
       return (
             static_cast<long double>(time >> 10)
           + static_cast<long double>(time & 0x3ff) / 1024.0L
@@ -115,10 +119,17 @@ class Time {
       return *this;
     };
 
+  bool Print(){return true;}
+  std::string GetVersion(){return "1.0";};
+  bool Serialise(BinaryStream &bs){
+    bs & time;
+    return true;
+  }
+  
   private:
     uint64_t time;
 
-    explicit Time(uint64_t time): time(time) {};
+  //  explicit Time(uint64_t time): time(time) {};
 };
 
 template <typename Number>
@@ -127,7 +138,10 @@ operator*(Number x, Time t) {
   return t * x;
 };
 
-struct Hit {
+class Hit : SerialisableObject {
+
+public:
+  
   Time     time;
   uint16_t charge_short;
   uint16_t charge_long;
@@ -138,6 +152,21 @@ struct Hit {
   static uint8_t get_digitizer_id(uint8_t channel) {
     return channel >> 4;
   };
+  
+  bool Print(){return true;}
+  std::string GetVersion(){return "1.0";};
+  bool Serialise(BinaryStream &bs){
+    
+    bs & time;
+    bs & charge_short;
+    bs & charge_long;
+    bs & baseline;
+    bs & channel;
+    bs & waveform;
+    
+    return true;
+  }
+  
 };
 
 #endif
