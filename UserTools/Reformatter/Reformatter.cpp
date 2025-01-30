@@ -57,6 +57,9 @@ void Reformatter::configure() {
       for (int j = 0; j < 16; ++j)
         channels[i++].active = mask & 1 << j;
   };
+
+  m_data->channel_hits.clear();
+  m_data->channel_hits.resize(m_data->enabled_digitizer_channels.size() * 16);
 };
 
 void Reformatter::reformat() {
@@ -125,19 +128,30 @@ void Reformatter::reformat() {
 
       remove_if(
           readouts,
-          [this, end](
+          [this, start, end](
             std::unique_ptr<
               std::list<std::unique_ptr<std::vector<Hit>>>
             >& readout
           ) -> bool {
             remove_if(
                 *readout,
-                [this, end](std::unique_ptr<std::vector<Hit>>& board) -> bool {
+                [this, start, end](std::unique_ptr<std::vector<Hit>>& board) -> bool {
                   remove_if(
                       *board,
-                      [this, end](Hit& hit) -> bool {
+                      [this, start, end](Hit& hit) -> bool {
                         if (hit.time >= end) return false;
-                        buffer.push_back(std::move(hit));
+			if (hit.time < start)
+			  *m_data->Log
+			    << ML(0)
+			    << "delayed hit in channel "
+			    << static_cast<int>(hit.channel)
+			    << ": " << hit.time.bits() << " (" << hit.time.seconds() << ") > "
+			    << start.bits() << " (" << start.seconds() << "), skipping it"
+			    << std::endl;
+			else {
+                          buffer.push_back(std::move(hit));
+			  ++m_data->channel_hits[hit.channel];
+			};
                         return true;
                       }
                   );

@@ -1,9 +1,15 @@
+#include <CalibTrigger.h>
+#include <Configuration.h>
+#include <DataWriter.h>
+#include <Digitizer.h>
 #include <DummyTool.h>
-#include "Sorter.h"
-#include "NhitsTrigger.h"
-#include "CalibTrigger.h"
-#include "DataWriter.h"
-#include "HVoltage.h"
-#include "Digitizer.h"
-#include "Reformatter.h"
-
+#include <FileWriter.h>
+#include <HVoltage.h>
+#include <JobManager.h>
+#include <Monitoring.h>
+#include <NhitsTrigger.h>
+#include <Reformatter.h>
+#include <RunControl.h>
+#include <Sorter.h>
+#include <Trigger.h>
+#include <WindowBuilder.h>
