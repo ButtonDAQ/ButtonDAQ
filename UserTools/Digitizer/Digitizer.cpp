@@ -403,7 +403,7 @@ void Digitizer::configure() {
       {
         .polarity     = cvDirect,
         .led_polarity = cvActiveHigh,
-        .source       = cvPulserV3718A
+        .source       = cvMiscSignals
       }
     );
   };
