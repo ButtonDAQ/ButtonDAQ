@@ -165,6 +165,54 @@ void Digitizer::connect() {
     thread.boards = std::move(boards);
     readout_threads.push_back(std::move(thread));
   };
+
+  if (m_variables.Get("bridge", string)) {
+    caen::Bridge::Connection connection;
+    connection.bridge = caen::Bridge::Connection::strToBridge(string.c_str());
+    if (connection.bridge == caen::Bridge::Connection::BridgeType::Invalid) {
+      ss << "invalid bridge: " << string;
+      throw std::runtime_error(ss.str());
+    };
+
+    if (m_variables.Get("bridge_conet", string)) {
+      connection.conet = caen::Bridge::Connection::strToConet(string.c_str());
+      if (connection.conet == caen::Bridge::Connection::ConetType::Invalid) {
+        ss << "invalid Conet adapter for bridge connection: " << string;
+        throw std::runtime_error(string);
+      };
+    } else
+      connection.conet = caen::Bridge::Connection::ConetType::None;
+
+    connection.link = 0;
+    m_variables.Get("bridge_link", connection.link);
+
+    connection.node = 0;
+    m_variables.Get("bridge_node", connection.node);
+
+    connection.local = false;
+    m_variables.Get("bridge_local", connection.local);
+
+    m_variables.Get("bridge_ip", connection.ip);
+
+    info() << static_cast<int>(connection.bridge) << std::endl;
+    info() << "connecting to VME bridge " << connection.bridgeName();
+    if (connection.conet != caen::Bridge::Connection::ConetType::None)
+      info() << " through " << connection.conetName();
+    if (!connection.ip.empty())
+      info() << ", ip = " << connection.ip;
+    info()
+      << ", link = "  << connection.link
+      << ", node = "  << connection.node
+      << ", local = " << connection.local
+      << "... " << std::flush;
+    bridge.reset(new caen::Bridge(connection));
+    info() << "success" << std::endl;
+    if (m_verbose > 2)
+      info()
+        << "Bridge firmware version: "
+        << bridge->firmwareRelease()
+        << std::endl;
+  };
 }
 
 void Digitizer::disconnect() {
@@ -262,8 +310,7 @@ void Digitizer::configure() {
       channels = mask;
     };
 
-    // digitizer.reset();
-    digitizer.clearData();
+    digitizer.reset();
 
     digitizer.setDPPAcquisitionMode(
         waveforms ? CAEN_DGTZ_DPP_ACQ_MODE_Mixed : CAEN_DGTZ_DPP_ACQ_MODE_List,
@@ -302,6 +349,14 @@ void Digitizer::configure() {
         digitizer.setChannelPulsePolarity(channel, polarity);
       };
 
+    {
+      ss << "digitizer_" << i << "_run_delay";
+      uint8_t run_delay;
+      if (m_variables.Get(ss.str(), run_delay))
+        digitizer.writeRegister(0x8170, run_delay);
+      ss.str({});
+    };
+
     board.buffer.allocate(digitizer);
     board.events.allocate(digitizer);
     if (waveforms) board.waveforms.allocate(digitizer);
@@ -318,6 +373,47 @@ void Digitizer::configure() {
     monitor->set_interval(interval);
   else if (m_data->services)
     monitor.reset(new Monitor(*m_data->services, digitizers, interval));
+
+  if (bridge) {
+    // Expect that bridge OUT0 is connected to S-IN of one digitizer, this
+    // digitizers' TRG-OUT is connected to S-IN of another digitizer, and so
+    // on. Configure the bridge OUT0 pulse parameters and digitizers to start
+    // acquisition on a pulse in S-IN and to propagate the pulse to TRG-OUT0.
+    for (auto& board : digitizers) {
+      board.digitizer.setAcquisitionMode(CAEN_DGTZ_S_IN_CONTROLLED);
+
+      // set bit 11 of register 0x8100 (acquisition control) ---
+      // start acquisition on S-IN rising edge, stop by software command
+      uint32_t r = board.digitizer.readRegister(0x8100);
+      r |= 1 << 11;
+      board.digitizer.writeRegister(0x8100, r);
+
+      // set bits 16-17 of register 0x811C (front panel IO control) ---
+      // propagate S-IN signal to TRG-OUT
+      board.digitizer.writeRegister(0x811C, 0b11 << 16);
+    };
+
+    bridge->setPulserConf(
+        cvPulserA,
+        {
+          .period = 255,
+          .width  = 255,
+          .unit   = cvUnit25ns,
+          .number = 1,
+          .start  = cvManualSW,
+          .reset  = cvManualSW
+        }
+    );
+
+    bridge->setOutputConf(
+      cvOutput0,
+      {
+        .polarity     = cvDirect,
+        .led_polarity = cvActiveHigh,
+        .source       = cvMiscSignals
+      }
+    );
+  };
 }
 
 void Digitizer::start_acquisition() {
@@ -339,6 +435,7 @@ void Digitizer::start_acquisition() {
         rt.boards
     );
   };
+  if (bridge) bridge->startPulser(cvPulserA);
 };
 
 void Digitizer::stop_acquisition() {

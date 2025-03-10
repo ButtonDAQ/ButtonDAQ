@@ -8,6 +8,7 @@
 #include <vector>
 
 #include <caen++/digitizer.hpp>
+#include <caen++/vme.hpp>
 
 #include "Tool.h"
 
@@ -59,6 +60,7 @@ class Digitizer: public ToolFramework::Tool {
     };
 
     std::vector<Board> digitizers;
+    std::unique_ptr<caen::Bridge> bridge;
     uint16_t nsamples; // number of samples in waveforms
 
     bool acquiring = false;
