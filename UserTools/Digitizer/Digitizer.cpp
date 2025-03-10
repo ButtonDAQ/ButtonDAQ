@@ -349,6 +349,14 @@ void Digitizer::configure() {
         digitizer.setChannelPulsePolarity(channel, polarity);
       };
 
+    {
+      ss << "digitizer_" << i << "_run_delay";
+      uint8_t run_delay;
+      if (m_variables.Get(ss.str(), run_delay))
+        digitizer.writeRegister(0x8170, run_delay);
+      ss.str({});
+    };
+
     board.buffer.allocate(digitizer);
     board.events.allocate(digitizer);
     if (waveforms) board.waveforms.allocate(digitizer);
