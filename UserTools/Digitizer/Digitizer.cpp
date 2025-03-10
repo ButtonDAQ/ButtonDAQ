@@ -167,21 +167,21 @@ void Digitizer::connect() {
   };
 
   if (m_variables.Get("bridge", string)) {
-    caen::Bridge::Connection connection;
-    connection.bridge = caen::Bridge::Connection::strToBridge(string.c_str());
-    if (connection.bridge == caen::Bridge::Connection::BridgeType::Invalid) {
+    caen::Connection connection;
+    connection.bridge = caen::Connection::strToBridge(string.c_str());
+    if (connection.bridge == caen::Connection::Bridge::Invalid) {
       ss << "invalid bridge: " << string;
       throw std::runtime_error(ss.str());
     };
 
     if (m_variables.Get("bridge_conet", string)) {
-      connection.conet = caen::Bridge::Connection::strToConet(string.c_str());
-      if (connection.conet == caen::Bridge::Connection::ConetType::Invalid) {
+      connection.conet = caen::Connection::strToConet(string.c_str());
+      if (connection.conet == caen::Connection::Conet::Invalid) {
         ss << "invalid Conet adapter for bridge connection: " << string;
         throw std::runtime_error(string);
       };
     } else
-      connection.conet = caen::Bridge::Connection::ConetType::None;
+      connection.conet = caen::Connection::Conet::None;
 
     connection.link = 0;
     m_variables.Get("bridge_link", connection.link);
@@ -196,7 +196,7 @@ void Digitizer::connect() {
 
     info() << static_cast<int>(connection.bridge) << std::endl;
     info() << "connecting to VME bridge " << connection.bridgeName();
-    if (connection.conet != caen::Bridge::Connection::ConetType::None)
+    if (connection.conet != caen::Connection::Conet::None)
       info() << " through " << connection.conetName();
     if (!connection.ip.empty())
       info() << ", ip = " << connection.ip;
