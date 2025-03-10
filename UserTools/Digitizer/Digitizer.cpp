@@ -310,10 +310,7 @@ void Digitizer::configure() {
       channels = mask;
     };
 
-    // Digitizer 30641 reports communication timeout on reset. Resetting
-    // through the register seems to work fine.
-    // digitizer.reset();
-    digitizer.writeRegister(0xEF24, 1);
+    digitizer.reset();
 
     digitizer.setDPPAcquisitionMode(
         waveforms ? CAEN_DGTZ_DPP_ACQ_MODE_Mixed : CAEN_DGTZ_DPP_ACQ_MODE_List,
