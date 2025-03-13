@@ -126,7 +126,7 @@ void FileWriter::Thread(Thread_args* arg){
   for(unsigned int i=0; i< size; i++){
     //    output<<local_trimmed_readout.front();
     //    local_trimmed_readout.pop();
-    output<<local_readout.front();
+    output<<*local_readout.front();
     local_readout.pop();
   }
   
