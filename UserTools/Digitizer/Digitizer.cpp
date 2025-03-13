@@ -167,21 +167,21 @@ void Digitizer::connect() {
   };
 
   if (m_variables.Get("bridge", string)) {
-    caen::Bridge::Connection connection;
-    connection.bridge = caen::Bridge::Connection::strToBridge(string.c_str());
-    if (connection.bridge == caen::Bridge::Connection::BridgeType::Invalid) {
+    caen::Connection connection;
+    connection.bridge = caen::Connection::strToBridge(string.c_str());
+    if (connection.bridge == caen::Connection::Bridge::Invalid) {
       ss << "invalid bridge: " << string;
       throw std::runtime_error(ss.str());
     };
 
     if (m_variables.Get("bridge_conet", string)) {
-      connection.conet = caen::Bridge::Connection::strToConet(string.c_str());
-      if (connection.conet == caen::Bridge::Connection::ConetType::Invalid) {
+      connection.conet = caen::Connection::strToConet(string.c_str());
+      if (connection.conet == caen::Connection::Conet::Invalid) {
         ss << "invalid Conet adapter for bridge connection: " << string;
         throw std::runtime_error(string);
       };
     } else
-      connection.conet = caen::Bridge::Connection::ConetType::None;
+      connection.conet = caen::Connection::Conet::None;
 
     connection.link = 0;
     m_variables.Get("bridge_link", connection.link);
@@ -196,7 +196,7 @@ void Digitizer::connect() {
 
     info() << static_cast<int>(connection.bridge) << std::endl;
     info() << "connecting to VME bridge " << connection.bridgeName();
-    if (connection.conet != caen::Bridge::Connection::ConetType::None)
+    if (connection.conet != caen::Connection::Conet::None)
       info() << " through " << connection.conetName();
     if (!connection.ip.empty())
       info() << ", ip = " << connection.ip;
@@ -334,20 +334,22 @@ void Digitizer::configure() {
 
     digitizer.setDPPParameters(channels, params);
 
-    // enable the extras word with extended and fine timestamps
-    digitizer.writeRegister(0x8000, 1, 17, 17);
-
     for (uint32_t channel = 0; channel < 16; ++channel)
       if (channels & 1 << channel) {
         digitizer.setDPPPreTriggerSize(channel, pre_trigger_size);
 
         // enable constant fraction discriminator (CFD)
 //        digitizer.writeRegister(0x1080 | channel << 8, 1, 6, 6);
-        // enable fine timestamp
-        digitizer.writeRegister(0x1084 | channel << 8, 2, 8, 10);
 
         digitizer.setChannelPulsePolarity(channel, polarity);
       };
+
+    // enable the extras word with extended and fine timestamps
+    digitizer.writeRegister(0x8000, 1, 17, 17);
+    // enable the fine timestamp
+    digitizer.writeRegister(0x8084, 0b10 << 8);
+    // disable propagation of software trigger to TRG-OUT
+    digitizer.writeRegister(0x8110, 0);
 
     {
       ss << "digitizer_" << i << "_run_delay";

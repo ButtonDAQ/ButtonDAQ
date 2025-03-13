@@ -126,6 +126,7 @@ void Reformatter::reformat() {
           };
       if (done) break;
 
+      // Move hits fitting the next timeslice from readouts to buffer
       remove_if(
           readouts,
           [this, start, end](
@@ -140,18 +141,18 @@ void Reformatter::reformat() {
                       *board,
                       [this, start, end](Hit& hit) -> bool {
                         if (hit.time >= end) return false;
-			if (hit.time < start)
-			  *m_data->Log
-			    << ML(0)
-			    << "delayed hit in channel "
-			    << static_cast<int>(hit.channel)
-			    << ": " << hit.time.bits() << " (" << hit.time.seconds() << ") > "
-			    << start.bits() << " (" << start.seconds() << "), skipping it"
-			    << std::endl;
-			else {
-                          buffer.push_back(std::move(hit));
-			  ++m_data->channel_hits[hit.channel];
-			};
+                        if (hit.time < start) {
+                          std::stringstream ss;
+                          ss
+                            << "Reformatter: delayed hit in channel "
+                            << static_cast<int>(hit.channel)
+                            << ": " << hit.time.bits() << " (" << hit.time.seconds() << " s) < "
+                            << start.bits() << " (" << start.seconds() << " s)";
+                          throw std::runtime_error(ss.str());
+                        };
+
+                        buffer.push_back(std::move(hit));
+                        ++m_data->channel_hits[hit.channel];
                         return true;
                       }
                   );
