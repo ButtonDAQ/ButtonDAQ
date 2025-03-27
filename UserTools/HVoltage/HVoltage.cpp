@@ -21,38 +21,27 @@ HVoltage::HVoltage(): Tool() {}
 void HVoltage::connect() {
   std::stringstream ss;
   std::string string;
+  caen::Connection connection;
   for (int i = 0; ; ++i) {
-    uint32_t vme;
     ss.str({});
     ss << "hv_" << i << "_vme";
     if (!m_variables.Get(ss.str(), string)) break;
     ss.str({});
     ss << string;
-    ss >> std::hex >> vme;
+    ss >> std::hex >> connection.address;
 
-    uint32_t usb = 0;
+    connection.link = 0;
     ss.str({});
     ss << "hv_" << i << "_usb";
-    m_variables.Get(ss.str(), usb);
+    m_variables.Get(ss.str(), connection.link);
 
     info()
       << "connecting to high voltage board V6534 "
       << i
-      << " (vme = "
-      << std::hex << vme << std::dec
-      << ", usb = "
-      << usb
-      << ")..."
+      << ' '
+      << connection
       << std::flush;
-    boards.emplace_back(
-        caen::V6534(
-          {
-            .link = CAENComm_USB,
-            .arg  = usb,
-            .vme  = vme << 16
-          }
-        )
-    );
+    boards.emplace_back(caen::V6534(connection));
     info() << "success" << std::endl;
 
     if (m_verbose >= 3) {
