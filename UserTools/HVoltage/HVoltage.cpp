@@ -72,7 +72,8 @@ void HVoltage::configure() {
       std::string var = ss.str();
       bool power = false;
       m_variables.Get(var, power);
-      board->set_power(channel, power);
+      if (board->power(channel) != power)
+        board->set_power(channel, power);
 
       auto element = ui_add(
           ui, var, OPTIONS,
@@ -91,7 +92,8 @@ void HVoltage::configure() {
       var = ss.str();
       float voltage = 0;
       m_variables.Get(var, voltage);
-      board->set_voltage(channel, voltage);
+      if (board->voltage_setting(channel) != voltage)
+        board->set_voltage(channel, voltage);
 
       element = ui_add(
           ui, var, VARIABLE,
@@ -192,10 +194,6 @@ bool HVoltage::Execute() {
 };
 
 bool HVoltage::Finalise() {
-  for (auto& board : boards)
-    for (int channel = 0; channel < 6; ++channel)
-      board.set_power(channel, false);
-
   if (monitor) {
     util.KillThread(monitor);
     delete monitor;
