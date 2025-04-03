@@ -18,6 +18,7 @@ class HVoltage: public ToolFramework::Tool {
     bool Finalise();
 
     void connect();
+    void disconnect();
     void configure();
  private:
     struct Monitor : public ToolFramework::Thread_args {
@@ -34,6 +35,7 @@ class HVoltage: public ToolFramework::Tool {
     ToolFramework::Utilities util;
 
     static void monitor_thread(ToolFramework::Thread_args*);
+    std::vector<ToolFramework::SlowControlElement*> controls;
 
     ToolFramework::Logging& log(int level) {
       return *m_log << ToolFramework::MsgL(level, m_verbose);
