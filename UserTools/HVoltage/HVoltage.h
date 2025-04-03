@@ -8,6 +8,7 @@
 #include "caen++/v6534.hpp"
 
 #include "Tool.h"
+#include "Services.h"
 
 class HVoltage: public ToolFramework::Tool {
   public:
@@ -21,20 +22,33 @@ class HVoltage: public ToolFramework::Tool {
     void disconnect();
     void configure();
  private:
-    struct Monitor : public ToolFramework::Thread_args {
-      HVoltage& tool;
-      std::chrono::seconds interval;
+    class Monitor {
+      public:
+        Monitor(
+            ToolFramework::Services&        services,
+            const std::vector<caen::V6534>& boards,
+            std::chrono::seconds            interval
+        );
+        ~Monitor();
 
-      Monitor(HVoltage& tool): tool(tool) {};
+        void set_interval(std::chrono::seconds interval);
+
+      private:
+        ToolFramework::Services&        services;
+        const std::vector<caen::V6534>& boards;
+        std::chrono::seconds            interval;
+        std::thread                     thread;
+        std::timed_mutex                mutex;
+
+        void stop();
+        void start();
+
+        void monitor();
     };
 
-    Monitor* monitor = nullptr;
+    std::unique_ptr<Monitor> monitor;
 
     std::vector<caen::V6534> boards;
-
-    ToolFramework::Utilities util;
-
-    static void monitor_thread(ToolFramework::Thread_args*);
     std::vector<ToolFramework::SlowControlElement*> controls;
 
     ToolFramework::Logging& log(int level) {
