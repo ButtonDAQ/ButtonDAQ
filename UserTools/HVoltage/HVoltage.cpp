@@ -3,6 +3,10 @@
 #include "HVoltage.h"
 #include "DataModel.h"
 
+static bool feql(float x, float y, float eps) {
+  return fabs(x - y) <= fabs(eps * x);
+};
+
 static SlowControlElement* ui_add(
   SlowControlCollection& ui,
   const std::string& name,
@@ -141,27 +145,103 @@ void HVoltage::configure() {
   );
 };
 
-void HVoltage::monitor_thread(Thread_args* args) {
-  auto mon = static_cast<Monitor*>(args);
+HVoltage::Monitor::Monitor(
+    ToolFramework::Services& services,
+    const std::vector<caen::V6534>& boards,
+    std::chrono::seconds interval
+): services(services), boards(boards), interval(interval) {
+  start();
+};
 
-  Store data;
-  int i = 0;
-  for (auto& board : mon->tool.boards) {
-    auto bprefix = "hv_" + std::to_string(i++);
-    for (uint8_t c = 0; c < board.nchannels(); ++c) {
-      auto cprefix = bprefix = "_channel_" + std::to_string(c);
-      data.Set(cprefix + "_power", board.power(c) ? "on" : "off");
-      data.Set(cprefix + "_voltage", board.voltage(c));
-      data.Set(cprefix + "_current", board.current(c));
-      data.Set(cprefix + "_temperature", board.temperature(c));
-    };
+HVoltage::Monitor::~Monitor() {
+  stop();
+};
+
+void HVoltage::Monitor::set_interval(std::chrono::seconds interval) {
+  if (interval == this->interval) return;
+  stop();
+  this->interval = interval;
+  start();
+};
+
+void HVoltage::Monitor::start() {
+  mutex.lock();
+  thread = std::thread(&HVoltage::Monitor::monitor, this);
+};
+
+void HVoltage::Monitor::stop() {
+  mutex.unlock();
+  thread.join();
+};
+
+void HVoltage::Monitor::monitor() {
+  struct State {
+    bool    power;
+    float   voltage;
+    float   current;
+    int16_t temperature;
   };
+  std::vector<std::array<State, 6>> state, last;
+  std::chrono::steady_clock::time_point last_update;
 
-  std::string json;
-  data >> json;
-  mon->tool.m_data->services->SendMonitoringData(json, "HVoltage");
+  do {
+    if (state.size() != boards.size()) {
+      state.resize(boards.size());
+      last.resize(boards.size());
+    };
 
-  std::this_thread::sleep_for(mon->interval);
+    for (size_t b = 0; b < boards.size(); ++b) {
+      auto& board_state = state[b];
+      auto& board = boards[b];
+      for (uint8_t c = 0; c < 6; ++c) {
+        auto& channel_state       = board_state[c];
+        channel_state.power       = board.power(c);
+        channel_state.voltage     = board.voltage(c);
+        channel_state.current     = board.current(c);
+        channel_state.temperature = board.temperature(c);
+      };
+    };
+
+    bool update = false;
+    for (size_t b = 0; b < boards.size() && !update; ++b) {
+      auto& state_board = state[b];
+      auto& last_board  = last[b];
+      for (uint8_t c = 0; c < 6 && !update; ++c) {
+        auto& state_channel = state_board[c];
+        auto& last_channel  = last_board[c];
+        update
+          =  state_channel.power != last_channel.power
+          || !feql(state_channel.voltage,     last_channel.voltage,     1e-3)
+          || !feql(state_channel.current,     last_channel.current,     1e-2)
+          || !feql(state_channel.temperature, last_channel.temperature, 1e-1);
+      };
+    };
+
+    auto now = std::chrono::steady_clock::now();
+    if (update || last_update - now > std::chrono::seconds(300)) {
+      Store data;
+      for (size_t b = 0; b < boards.size(); ++b) {
+        auto bprefix = "hv_" + std::to_string(b);
+        for (uint8_t c = 0; c < 6; ++c) {
+          auto& channel = state[b][c];
+          auto cprefix = bprefix + "_channel_" + std::to_string(c);
+          data.Set(cprefix + "_power",       channel.power ? "on" : "off");
+          data.Set(cprefix + "_voltage",     channel.voltage);
+          data.Set(cprefix + "_current",     channel.current);
+          data.Set(cprefix + "_temperature", channel.temperature);
+        };
+      };
+
+      std::string json;
+      data >> json;
+      services.SendMonitoringData(json, "HVoltage");
+
+      last = state;
+      last_update = now;
+    };
+
+    // interruptable sleep
+  } while (!mutex.try_lock_for(interval));
 };
 
 bool HVoltage::Initialise(std::string configfile, DataModel& data) {
@@ -170,17 +250,20 @@ bool HVoltage::Initialise(std::string configfile, DataModel& data) {
 
   if (!m_variables.Get("verbose", m_verbose)) m_verbose = 1;
 
-  m_data->sc_vars.InitThreadedReceiver(m_data->context, 5555);
-
   connect();
   configure();
 
   if (data.services) {
-    monitor = new Monitor(*this);
     int interval = 5;
     m_variables.Get("monitor_interval", interval);
-    monitor->interval = std::chrono::seconds(interval);
-    util.CreateThread("HVoltage monitor", &monitor_thread, monitor);
+
+    monitor.reset(
+        new Monitor(
+          *m_data->services,
+          boards,
+          std::chrono::seconds(interval)
+        )
+    );
 
     auto element = ui_add(
         m_data->sc_vars,
@@ -188,7 +271,9 @@ bool HVoltage::Initialise(std::string configfile, DataModel& data) {
         VARIABLE,
         [this](std::string name) -> std::string {
           auto& ui = m_data->sc_vars;
-          monitor->interval = std::chrono::seconds(ui.GetValue<unsigned>(name));
+          monitor->set_interval(
+              std::chrono::seconds(ui.GetValue<unsigned>(name))
+          );
           return name + ' ' + ui.GetValue<std::string>(name);
         }
     );
@@ -214,11 +299,7 @@ bool HVoltage::Execute() {
 };
 
 bool HVoltage::Finalise() {
-  if (monitor) {
-    util.KillThread(monitor);
-    delete monitor;
-  };
-
+  if (monitor) delete monitor.release();
   disconnect();
   return true;
 };
