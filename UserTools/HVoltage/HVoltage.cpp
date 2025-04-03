@@ -56,8 +56,16 @@ void HVoltage::connect() {
   };
 };
 
+void HVoltage::disconnect() {
+  for (auto& element : controls) m_data->sc_vars.Remove(element->GetName());
+  controls.clear();
+  boards.clear();
+};
+
 void HVoltage::configure() {
   auto& ui = m_data->sc_vars;
+
+  controls.reserve(boards.size() * 6);
 
   std::stringstream ss;
   for (unsigned i = 0; i < boards.size(); ++i) {
@@ -107,25 +115,29 @@ void HVoltage::configure() {
       element->SetMax(2e3);
       element->SetStep(0.1);
       element->SetValue(voltage);
+
+      controls.push_back(element);
     };
   };
 
-  ui_add(
-      ui, "Shutdown_all", BUTTON,
-      [this](std::string name) -> std::string {
-        for (auto& board : boards)
-          for (int channel = 0; channel < 6; ++channel)
-            board.set_power(channel, false);
+  controls.push_back(
+    ui_add(
+        ui, "Shutdown_all", BUTTON,
+        [this](std::string name) -> std::string {
+          for (auto& board : boards)
+            for (int channel = 0; channel < 6; ++channel)
+              board.set_power(channel, false);
 
-        std::stringstream ss;
-        for (size_t i = 0; i < boards.size(); ++i)
-          for (int channel = 0; channel < 6; ++channel) {
-            ss.str({});
-            ss << "hv_" << i << "_ch_" << channel << "_power";
-            m_data->sc_vars[ss.str()]->SetValue("off");
-          }
-        return "ok";
-      }
+          std::stringstream ss;
+          for (size_t i = 0; i < boards.size(); ++i)
+            for (int channel = 0; channel < 6; ++channel) {
+              ss.str({});
+              ss << "hv_" << i << "_ch_" << channel << "_power";
+              m_data->sc_vars[ss.str()]->SetValue("off");
+            }
+          return "ok";
+        }
+    )
   );
 };
 
@@ -190,6 +202,14 @@ bool HVoltage::Initialise(std::string configfile, DataModel& data) {
 };
 
 bool HVoltage::Execute() {
+  if (m_data->change_config) {
+    disconnect();
+    InitialiseConfiguration();
+    if (!m_variables.Get("verbose", m_verbose)) m_verbose = 1;
+    connect();
+    configure();
+  };
+
   return true;
 };
 
@@ -199,5 +219,6 @@ bool HVoltage::Finalise() {
     delete monitor;
   };
 
+  disconnect();
   return true;
 };
