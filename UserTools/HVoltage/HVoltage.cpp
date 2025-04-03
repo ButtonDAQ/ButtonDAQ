@@ -30,15 +30,16 @@ void HVoltage::connect() {
     ss << string;
     ss >> std::hex >> connection.address;
 
-    connection.link = 0;
+    ss.clear();
     ss.str({});
+    connection.link = 0;
     ss << "hv_" << i << "_usb";
     m_variables.Get(ss.str(), connection.link);
 
     info()
       << "connecting to high voltage board V6534 "
       << i
-      << ' '
+      << " at "
       << connection
       << std::flush;
     boards.emplace_back(caen::V6534(connection));
