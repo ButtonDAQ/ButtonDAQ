@@ -51,7 +51,7 @@ void Digitizer::Monitor::stop() {
 };
 
 void Digitizer::Monitor::set_interval(std::chrono::seconds interval) {
-  if (interval != this->interval) return;
+  if (interval == this->interval) return;
   stop();
   this->interval = interval;
   start();
@@ -567,10 +567,7 @@ bool Digitizer::Execute() {
 };
 
 bool Digitizer::Finalise() {
-  if (monitor) {
-    delete monitor.release();
-    monitor = nullptr;
-  };
+  if (monitor) delete monitor.release();
 
   if (acquiring) stop_acquisition();
   disconnect();
