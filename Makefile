@@ -37,9 +37,12 @@ Libs=-L $(SOURCEDIR)/lib/ -lDataModel -L $(ToolDAQFramework)/lib/ -lToolDAQChain
 
 #.SECONDARY: $(%.o)
 
-all: $(DataModelHEADERS) $(MyToolHEADERS) $(SOURCEFILES) $(LIBRARIES) main NodeDaemon RemoteControl
+all: $(DataModelHEADERS) $(MyToolHEADERS) $(SOURCEFILES) $(LIBRARIES) main NodeDaemon RemoteControl Reader
 
 debug: all
+
+Reader: reader.cpp
+	g++  $(CXXFLAGS) $< -o $@ $(Includes) $(Libs) $(DataModelInclude) $(DataModelLib) $(MyToolsInclude) $(MyToolsLib)
 
 main: src/main.o $(LIBRARIES) $(DataModelHEADERS) $(MyToolHEADERS) | $(SOURCEFILES)
 	@echo -e "\e[38;5;11m\n*************** Making " $@ " ****************\e[0m"

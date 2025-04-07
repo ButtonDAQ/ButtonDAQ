@@ -122,11 +122,21 @@ void FileWriter::Thread(Thread_args* arg){
   //  unsigned long size=local_trimmed_readout.size();
   unsigned long size=local_readout.size();
   output<<size;
-
+  
+  unsigned int mod=1;  
+  if(size>(*args->file_writeout_period)) mod=size/(*(args->file_writeout_period));
+  
   for(unsigned int i=0; i< size; i++){
     //    output<<local_trimmed_readout.front();
     //    local_trimmed_readout.pop();
     output<<*local_readout.front();
+    
+    if(!(i%mod)){
+      args->data->monitoring_readout_mutex.lock();
+      args->data->monitoring_readout.emplace(std::move(local_readout.front()));
+      args->data->monitoring_readout_mutex.unlock();
+    }
+
     local_readout.pop();
   }
   

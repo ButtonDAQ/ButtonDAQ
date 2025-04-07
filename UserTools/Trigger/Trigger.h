@@ -6,6 +6,8 @@
 
 #include "Tool.h"
 #include <DataModel.h>
+#include <stdlib.h>     /* srand, rand */
+#include <time.h>       /* time */
 
 using namespace ToolFramework;
 
@@ -34,7 +36,9 @@ struct Trigger_args:Thread_args{
   unsigned int* threashold;
   unsigned int* window_size;
   unsigned int* jump;
+  float* zero_rate;
   short* count;
+  bool* nhits;
   
 };
 
@@ -76,7 +80,9 @@ class Trigger: public Tool {
   unsigned int threashold;
   unsigned int window_size;
   unsigned int jump;
-  std::string m_configfile;    
+  float zero_rate;
+  std::string m_configfile;
+  bool nhits;
   
 };
 

@@ -1,0 +1,11 @@
+#test1 DummyTool configfiles/Button/DummyToolConfig
+#test2 DummyTool configfiles/Button/DummyToolConfig
+Configuration Configuration Null
+RunControl RunControl Null
+JobManager JobManager Null
+Digitizer Digitizer Null
+Reformatter Reformatter Null
+Sorter Sorter Null
+Trigger Trigger Null
+FileWriter FileWriter Null
+Monitoring Monitoring Null

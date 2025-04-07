@@ -12,6 +12,7 @@ bool WindowBuilder::Initialise(std::string configfile, DataModel &data){
   InitialiseTool(data);
   InitialiseConfiguration(configfile);
 
+  m_configfile=configfile;
   if(!m_variables.Get("verbose",m_verbose)) m_verbose=1;
 
   m_util=new Utilities();
@@ -28,6 +29,12 @@ bool WindowBuilder::Initialise(std::string configfile, DataModel &data){
 
 bool WindowBuilder::Execute(){
 
+  if(m_data->change_config){
+    InitialiseConfiguration(m_configfile);  
+    LoadConfig();
+    ExportConfiguration();
+  }
+  
   
   return true;
 }
@@ -53,6 +60,7 @@ void WindowBuilder::CreateThread(){
   tmp_args->triggered_readout_mutex = &(m_data->triggered_readout_mutex);
   tmp_args->final_readout = &(m_data->final_readout);
   tmp_args->final_readout_mutex = &(m_data->sorted_readout_mutex);
+  tmp_args->trigger_offset = &trigger_offset;
   tmp_args->pre_trigger = &pre_trigger;
   tmp_args->post_trigger = &post_trigger;
   args.push_back(tmp_args);
@@ -101,6 +109,7 @@ void WindowBuilder::Thread(Thread_args* arg){
     //printf("p4 %p\n",tmp_args->time_slice.get());
     tmp_args->final_readout = args->final_readout;
     tmp_args->final_readout_mutex = args->final_readout_mutex;
+    tmp_args->trigger_offset = args->trigger_offset;
     tmp_args->pre_trigger = args->pre_trigger;
     tmp_args->post_trigger = args->post_trigger;
     tmp_job->data=tmp_args;
@@ -131,8 +140,8 @@ bool WindowBuilder::SelectData(void* data){
     
     tmp_trigger_group.triggers.push_back(args->time_slice->triggers.at(i));
 
-    tmp_trigger_group.min = args->time_slice->triggers.at(i).time.bits() - (*args->pre_trigger)[args->time_slice->triggers.at(i).type];
-    tmp_trigger_group.max = args->time_slice->triggers.at(i).time.bits() + (*args->post_trigger)[args->time_slice->triggers.at(i).type];
+    tmp_trigger_group.min = args->time_slice->triggers.at(i).time.bits() + (*args->trigger_offset)[args->time_slice->triggers.at(i).type] - (*args->pre_trigger)[args->time_slice->triggers.at(i).type];
+    tmp_trigger_group.max = args->time_slice->triggers.at(i).time.bits() + (*args->trigger_offset)[args->time_slice->triggers.at(i).type] + (*args->post_trigger)[args->time_slice->triggers.at(i).type];
     
     for( unsigned int j=i+1; j< args->time_slice->triggers.size(); j++){
       if(args->time_slice->triggers.at(j).time.bits() > tmp_trigger_group.min && args->time_slice->triggers.at(j).time.bits()< tmp_trigger_group.max){
@@ -164,7 +173,10 @@ bool WindowBuilder::SelectData(void* data){
     for(std::vector<Hit>::iterator it=args->time_slice->hits.begin(); it!= args->time_slice->hits.end(); it++){
       if(it->time.bits()<trigger_groups.at(i).min) continue;
       if(it->time.bits()>trigger_groups.at(i).max) break;
-      if(!skip) min_it=it;
+      if(!skip){
+	min_it=it;
+	skip=true;
+      }
       max_it=it;
       
       
@@ -199,5 +211,25 @@ void WindowBuilder::FailSelect(void* data){
   args=0;
   data=0;
 
+  
+}
+
+void WindowBuilder::LoadConfig(){
+
+  if(!m_variables.Get("verbose",m_verbose)) m_verbose=1;
+  unsigned long tmp=0;
+  
+  if(m_variables.Get("nhits_trigger_offset",tmp)) trigger_offset[TriggerType::nhits]=tmp;
+  if(m_variables.Get("nhits_pre_trigger",tmp)) pre_trigger[TriggerType::nhits]=tmp;
+  if(m_variables.Get("nhits_post_trigger",tmp)) post_trigger[TriggerType::nhits]=tmp;
+
+  if(m_variables.Get("calib_trigger_offset",tmp)) trigger_offset[TriggerType::calib]=tmp;
+  if(m_variables.Get("calib_pre_trigger",tmp)) pre_trigger[TriggerType::calib]=tmp;
+  if(m_variables.Get("calib_post_trigger",tmp)) post_trigger[TriggerType::calib]=tmp;
+
+  if(m_variables.Get("zero_bias_trigger_offset",tmp)) trigger_offset[TriggerType::zero_bias]=tmp;
+  if(m_variables.Get("zero_bias_pre_trigger",tmp)) pre_trigger[TriggerType::zero_bias]=tmp;
+  if(m_variables.Get("zero_bias_post_trigger",tmp)) post_trigger[TriggerType::zero_bias]=tmp;
+  
   
 }

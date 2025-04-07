@@ -13,6 +13,8 @@ bool Trigger::Initialise(std::string configfile, DataModel &data){
   m_configfile=configfile;
   InitialiseConfiguration(configfile);
 
+  srand (time(NULL));
+  
   if(!m_variables.Get("verbose",m_verbose)) m_verbose=1;
 
   m_util=new Utilities();
@@ -33,10 +35,19 @@ bool Trigger::Execute(){
     InitialiseConfiguration(m_configfile);
 
     if(!m_variables.Get("verbose",m_verbose)) m_verbose=1;
+    if(!m_variables.Get("nhits",nhits)) nhits=false;
     if(!m_variables.Get("threashold",threashold)) threashold=20;
     if(!m_variables.Get("window_size",window_size)) window_size=200;
     if(!m_variables.Get("jump",jump)) jump=2000;
-    
+    trigger_channels.clear();
+    std::string type;
+    for(uint8_t i=0; i<255; i++){
+      if(m_variables.Get(std::to_string(i), type)){
+	if(type=="calib") trigger_channels[i]=TriggerType::calib;
+      }
+    }
+    if(!m_variables.Get("zero_rate",zero_rate)) zero_rate=0.0;  
+
     ExportConfiguration();
   }
   
@@ -65,9 +76,11 @@ void Trigger::CreateThread(){
   tmp_args->triggered_readout = &(m_data->triggered_readout);
   tmp_args->triggered_readout_mutex = &(m_data->triggered_readout_mutex);
   tmp_args->trigger_channels = &trigger_channels;
+  tmp_args->zero_rate = &zero_rate;
   tmp_args->threashold = &threashold;
   tmp_args->window_size = &window_size;
   tmp_args->jump = &jump;
+  tmp_args->nhits = &nhits;
   args.push_back(tmp_args);
   
   std::stringstream tmp;
@@ -114,9 +127,11 @@ void Trigger::Thread(Thread_args* arg){
     tmp_args->triggered_readout = args->triggered_readout;
     tmp_args->triggered_readout_mutex = args->triggered_readout_mutex;
     tmp_args->trigger_channels = args->trigger_channels;
+    tmp_args->zero_rate = args->zero_rate;
     tmp_args->threashold = args->threashold;
     tmp_args->window_size = args->window_size;
     tmp_args->jump = args->jump;
+    tmp_args->nhits = args->nhits;
     tmp_job->data=tmp_args;
     tmp_job->func=TriggerData;
     tmp_job->fail_func=FailTrigger;
@@ -141,31 +156,49 @@ bool Trigger::TriggerData(void* data){
   //trigger channels
   //time??
  //printf("d2\n");
- args->count = new short[100000000];
+  
+  if(args->nhits) args->count = new short[100000000];
  //printf("d3\n");
   for(unsigned int i=0; i <args->time_slice->hits.size(); i++){
 
-    if(args->trigger_channels->count(args->time_slice->hits.at(i).channel)) args->time_slice->triggers.emplace(args->time_slice->triggers.end(), (*args->trigger_channels)[args->time_slice->hits.at(i).channel], args->time_slice->hits.at(i).time);
+    if(args->trigger_channels->count(args->time_slice->hits.at(i).channel)) args->time_slice->triggers.emplace(args->time_slice->triggers.end(), (*args->trigger_channels)[args->time_slice->hits.at(i).channel], args->time_slice->hits.at(i).time); // calib triggers
     else{
       //printf("a=%lu\n",args->time_slice->hits.at(i).time.bits());
       //printf("b=%lu\n",args->time_slice->time.bits());
       //printf("c=%lu\n",(args->time_slice->hits.at(i).time.bits() - args->time_slice->time.bits())>>9);
       //printf("channel = %u\n", args->time_slice->hits[i].channel);
-
-      args->count[(args->time_slice->hits.at(i).time.bits() - args->time_slice->time.bits())>>9]++;
+      
+      if(args->nhits) args->count[(args->time_slice->hits.at(i).time.bits() - args->time_slice->time.bits())>>9]++;
     }
   }
- //printf("d4\n");
-  for(unsigned int i=1; i<100000000; i++){
-    args->count[i]+=args->count[i-1];
-  }
- //printf("d5\n");
-  for(unsigned int i= (*args->window_size)+1; i<100000000-(*args->window_size); i++){
-    if(args->count[i]-args->count[i-(*args->window_size)] >= (*args->threashold)){
-      args->time_slice->triggers.emplace(args->time_slice->triggers.end(), TriggerType::nhits, (i-(*args->window_size) <<9) + args->time_slice->time.bits());
-      i+=(*args->jump);
+  //printf("d4\n");
+  
+  if(args->nhits){
+    for(unsigned int i=1; i<100000000; i++){
+      args->count[i]+=args->count[i-1];
     }
+    //printf("d5\n");
+    
+    //nhits
+    for(unsigned int i= (*args->window_size)+1; i<100000000-(*args->window_size); i++){
+      if(args->count[i]-args->count[i-(*args->window_size)] >= (*args->threashold)){
+	args->time_slice->triggers.emplace(args->time_slice->triggers.end(), TriggerType::nhits, (i-(*args->window_size) <<9) + args->time_slice->time.bits());
+	i+=(*args->jump);
+      }
+    }
+    
+    delete[] args->count;
+    args->count=0;
   }
+  
+  // zero bais
+  for(float repeate = 0.0; repeate<(*(args->zero_rate)/10.0); repeate+=1.0){ 
+    if(((rand() % 1000)/1000.0) < (*(args->zero_rate)/10.0)){
+      args->time_slice->triggers.emplace(args->time_slice->triggers.end(), TriggerType::zero_bias, ((rand() % 100000000) <<9) + args->time_slice->time.bits()); 
+    }
+    
+  }
+				    
  //printf("d6\n");
 
   ////

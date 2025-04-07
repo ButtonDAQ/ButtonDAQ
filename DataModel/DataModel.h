@@ -50,6 +50,7 @@ class DataModel : public DAQDataModelBase {
   unsigned long run_number;
   unsigned long sub_run_number;
   unsigned int run_configuration;
+  unsigned long readout_num;  
   
   unsigned int thread_num;
   unsigned int thread_cap;
@@ -85,6 +86,10 @@ class DataModel : public DAQDataModelBase {
   std::queue<std::unique_ptr<TimeSlice>> final_readout;
   std::mutex final_readout_mutex;
 
+  std::queue<std::unique_ptr<TimeSlice>> monitoring_readout;
+  std::mutex monitoring_readout_mutex;
+
+  
   std::vector<size_t> channel_hits;
   
 

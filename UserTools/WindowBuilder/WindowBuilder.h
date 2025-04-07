@@ -39,6 +39,7 @@ struct WindowBuilder_args:Thread_args{
   std::mutex* final_readout_mutex;
   std::queue<std::unique_ptr<TimeSlice>> in_progress;
   std::unique_ptr<TimeSlice> time_slice;
+  std::map<TriggerType, unsigned long>* trigger_offset;
   std::map<TriggerType, unsigned long>* pre_trigger;
   std::map<TriggerType, unsigned long>* post_trigger;
   
@@ -69,8 +70,11 @@ class WindowBuilder: public Tool {
 
   void CreateThread(); ///< Function to Create Thread
   void DeleteThread(int pos); ///< Function to delete thread @param pos is the position in the args vector below
-
+  void LoadConfig();
+  
   static void Thread(Thread_args* arg); ///< Function to be run by the thread in a loop. Make sure not to block in it
+
+  std::string m_configfile;
   Utilities* m_util; ///< Pointer to utilities class to help with threading
   std::vector<WindowBuilder_args*> args; ///< Vector of thread args (also holds pointers to the threads)
   int m_freethreads; ///< Keeps track of free threads
@@ -79,6 +83,7 @@ class WindowBuilder: public Tool {
   static bool SelectData(void* data);
   static void FailSelect(void* data);
 
+  std::map<TriggerType, unsigned long> trigger_offset;
   std::map<TriggerType, unsigned long> pre_trigger;
   std::map<TriggerType, unsigned long> post_trigger;
   

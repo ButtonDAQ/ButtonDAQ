@@ -457,7 +457,7 @@ void Digitizer::stop_acquisition() {
 
 // Read data from the board and put it into m_data.raw_readout
 void Digitizer::readout(Board& board) {
-  board.digitizer.sendSWTrigger(); // FIXME: software trigger for testing
+  // board.digitizer.sendSWTrigger(); // FIXME: software trigger for testing
   board.digitizer.readData(CAEN_DGTZ_SLAVE_TERMINATED_READOUT_MBLT, board.buffer);
   if (board.digitizer.getNumEvents(board.buffer) == 0) return;
 

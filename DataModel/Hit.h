@@ -2,6 +2,7 @@
 #define HIT_H
 
 #include <cstdint>
+#include <zmq.hpp>
 
 using namespace ToolFramework;
 
@@ -119,7 +120,12 @@ class Time : SerialisableObject{
       return *this;
     };
 
-  bool Print(){return true;}
+  bool Print(){
+
+    std::cout<<seconds();
+    
+    return true;
+  }
   std::string GetVersion(){return "1.0";};
   bool Serialise(BinaryStream &bs){
     bs & time;
@@ -153,7 +159,20 @@ public:
     return channel >> 4;
   };
   
-  bool Print(){return true;}
+  bool Print(){
+
+    unsigned long sum=0;
+    std::cout<<time.Print()<<","<<charge_short<<","<<charge_long<<","<<baseline<<","<<((unsigned short)channel);
+    for(size_t i=0; i<waveform.size(); i++){
+      //std::cout<<", ["<<i<<"]"
+      std::cout<<", "<<waveform.at(i);
+      sum+=waveform.at(i);
+    }
+
+    std::cout<<", sum="<<sum;
+    
+    return true;
+  }
   std::string GetVersion(){return "1.0";};
   bool Serialise(BinaryStream &bs){
     
@@ -166,6 +185,85 @@ public:
     
     return true;
   }
+
+  void Send(zmq::socket_t* sock, unsigned int more=0){
+    
+    zmq::message_t msg1(sizeof(time));
+    memcpy(msg1.data(), &time, sizeof(time));
+    sock->send(msg1, ZMQ_SNDMORE);
+
+    zmq::message_t msg2(sizeof(charge_short));
+    memcpy(msg2.data(), &charge_short, sizeof(charge_short));
+    sock->send(msg2, ZMQ_SNDMORE);
+
+    zmq::message_t msg3(sizeof(charge_long));
+    memcpy(msg3.data(), &charge_long, sizeof(charge_long));
+    sock->send(msg3, ZMQ_SNDMORE);
+ 
+    zmq::message_t msg4(sizeof(baseline));
+    memcpy(msg4.data(), &baseline, sizeof(baseline));
+    sock->send(msg4, ZMQ_SNDMORE);    
+    
+    zmq::message_t msg5(sizeof(channel));
+    memcpy(msg5.data(), &channel, sizeof(channel));
+    sock->send(msg5, ZMQ_SNDMORE);
+
+    unsigned long size= waveform.size();
+    zmq::message_t msg6(sizeof(size));
+    memcpy(msg6.data(), &size, sizeof(size));
+    if(size==0){
+      sock->send(msg6, more);
+      return;
+    }
+    
+    sock->send(msg6, ZMQ_SNDMORE);
+    zmq::message_t msg7(sizeof(uint16_t)* waveform.size());
+    memcpy(msg7.data(), waveform.data(), sizeof(uint16_t)* waveform.size());
+    sock->send(msg7, more);
+    
+  }
+
+
+  void Receive(zmq::socket_t* sock){
+
+    zmq::message_t msg1;
+    sock->recv(&msg1);
+    memcpy(&time, msg1.data(), sizeof(time));
+    
+    zmq::message_t msg2;
+    sock->recv(&msg2);
+    memcpy(&charge_short, msg2.data(), sizeof(charge_short));
+    
+    zmq::message_t msg3;
+    sock->recv(&msg3);
+    memcpy(&charge_long, msg3.data(), sizeof(charge_long));
+  
+    zmq::message_t msg4;
+    sock->recv(&msg4);
+    memcpy(&baseline, msg4.data(), sizeof(baseline));
+     
+    zmq::message_t msg5;
+    sock->recv(&msg5);
+    memcpy(&channel, msg5.data(), sizeof(channel));
+
+    unsigned long size= 0;
+    zmq::message_t msg6;
+    sock->recv(&msg6);
+    memcpy(&size, msg6.data(), sizeof(size));
+
+    waveform.resize(size);
+    
+    if(size!=0){
+      zmq::message_t msg7;
+      sock->recv(&msg7);
+      memcpy(waveform.data(), msg7.data(), sizeof(uint16_t)* waveform.size());
+      
+    }
+
+    
+  }
+
+  
   
 };
 

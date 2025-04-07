@@ -6,6 +6,9 @@
 
 #include "Tool.h"
 #include "DataModel.h"
+#include "sys/types.h"
+#include "sys/sysinfo.h"
+#include <zmq.hpp>
 
 /**
  * \struct Monitoring_args_args
@@ -30,6 +33,12 @@ struct Monitoring_args:Thread_args{
   // Store hit_rates;
   DataModel* data;
 
+  std::queue<std::unique_ptr<TimeSlice>>* monitoring_readout;
+  std::mutex* monitoring_readout_mutex;
+  std::queue<std::unique_ptr<TimeSlice>> in_progress;
+  std::unique_ptr<TimeSlice> time_slice;
+  zmq::socket_t* sock;
+  
 };
 
 /**
@@ -59,7 +68,10 @@ class Monitoring: public Tool {
   std::string m_configfile;
   Utilities* m_util;  ///< Pointer to utilities class to help with threading
   Monitoring_args* args; ///< thread args (also holds pointer to the thread)
-  
+
+  unsigned long long lastTotalUser, lastTotalUserLow, lastTotalSys, lastTotalIdle;
+  float mem;
+  float cpu;
 
 };
 

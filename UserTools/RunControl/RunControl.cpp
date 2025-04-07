@@ -26,7 +26,6 @@ bool RunControl::Initialise(std::string configfile, DataModel &data){
   m_start_time=&m_data->start_time;
   //printf("d3\n");
 
-  //  if(m_data->readout_windows==0) m_data->readout_windows= new std::deque<ReadoutWindow*>;
   
   //  m_util=new Utilities();
   //  args=new RunControl_args();
@@ -34,11 +33,9 @@ bool RunControl::Initialise(std::string configfile, DataModel &data){
   
   m_data->run_number=0;
   m_data->sub_run_number=0;
-  // m_data->readout_num=0;
+  m_data->readout_num=0;
   //printf("d5\n");
   
-  //  args->start_time=&m_data->start_time;
-  //args->current_coarse_counter=&m_data->current_coarse_counter;
   //printf("d6\n");
   
   // FIXME better name than 'test'
@@ -68,8 +65,7 @@ bool RunControl::Execute(){
 
   if(m_data->change_config){
     printf("run control in change config\n");
-    LoadConfig();
-    
+    LoadConfig();    
   }
 
   if(m_data->run_start) m_data->run_start=false;
@@ -80,16 +76,32 @@ bool RunControl::Execute(){
   if(m_data->sub_run) m_data->sub_run=false;
 
   if(m_stopping){
-    /* need button version
-    m_data->readout_windows_mtx.lock();
-    if(m_data->readout_windows->size()==0){
-      m_data->vars.Set("Runinfo", "Run Stopped");
-      m_data->vars.Set("Status", "Run Stopped");
-      m_stopping=false;
-    }
-    m_data->readout_windows_mtx.unlock();
-    */
-     m_stopping=false;
+
+    m_data->readout_num=0;
+    
+    m_data->readout_mutex.lock();
+    while(m_data->readout.size()) m_data->readout.pop();
+    m_data->readout_mutex.unlock();
+
+    m_data->sorted_readout_mutex.lock();
+    while(m_data->sorted_readout.size()) m_data->sorted_readout.pop();
+    m_data->sorted_readout_mutex.unlock();
+
+    m_data->triggered_readout_mutex.lock();
+    while(m_data->triggered_readout.size()) m_data->triggered_readout.pop();
+    m_data->triggered_readout_mutex.unlock();
+    
+    m_data->final_readout_mutex.lock();
+    while(m_data->final_readout.size()) m_data->final_readout.pop();
+    m_data->final_readout_mutex.unlock();
+
+    m_data->monitoring_readout_mutex.lock();
+    while(m_data->monitoring_readout.size()) m_data->monitoring_readout.pop();
+    m_data->monitoring_readout_mutex.unlock();
+    
+    m_data->vars.Set("Runinfo", "Run Stopped");
+    m_data->vars.Set("Status", "Run Stopped");
+    m_stopping=false;
   }
   
   if(m_run_start){
@@ -172,7 +184,7 @@ bool RunControl::Execute(){
 
     m_data->sub_run=true;
     m_new_sub_run=false;
-    //    m_data->readout_num=0;
+    m_data->readout_num=0;
   }
   
   m_lapse = m_period_new_sub_run -( boost::posix_time::microsec_clock::universal_time() - (*m_start_time));
@@ -214,7 +226,7 @@ void RunControl::Thread(Thread_args* arg){
 
 std::string RunControl::RunStart(const char* key){
 
-  printf("in runstart func\n");
+  //  printf("in runstart func\n");
   
   if(m_stopping){
     m_data->sc_vars["RunStart"]->SetValue("command");
@@ -254,7 +266,7 @@ std::string RunControl::RunStart(const char* key){
   m_run_start=true;
   m_data->vars.Set("Runinfo","Starting new run");
   m_data->vars.Set("Status", "Starting new run");
-  printf("loadconfig set\n");
+  //printf("load config set\n");
   m_data->load_config=true;
   
   m_config_start=boost::posix_time::microsec_clock::universal_time();
@@ -349,8 +361,8 @@ void RunControl::LoadConfig(){
   unsigned int sub_run_period=0;
   if(!m_variables.Get("sub_run_period_hours",sub_run_period)) sub_run_period=30;
   if(!m_variables.Get("run_start_delay_mins",m_start_delay)) m_start_delay=1;
-  std::cout<<"printing runcontrol variables"<<std::endl;
-  m_variables.Print();
+  // std::cout<<"printing runcontrol variables"<<std::endl;
+  //m_variables.Print();
   m_period_new_sub_run=boost::posix_time::hours(sub_run_period);
   m_period_reconfigure=boost::posix_time::seconds(m_config_update_time_sec);
   
