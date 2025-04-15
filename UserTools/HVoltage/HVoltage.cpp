@@ -32,7 +32,7 @@ void HVoltage::connect() {
     if (!m_variables.Get(ss.str(), string)) break;
     ss.str({});
     ss << string;
-    ss >> std::hex >> connection.address;
+    ss >> std::hex >> connection.address >> std::dec;
 
     ss.clear();
     ss.str({});
