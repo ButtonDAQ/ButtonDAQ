@@ -76,8 +76,9 @@ void HVoltage::configure() {
     caen::V6534* board = &boards[i];
     for (int channel = 0; channel < 6; ++channel) {
       board->set_pwdown(channel, caen::V6534::PowerDownMode::ramp);
-      board->set_ramp_up(0, 5);
-      board->set_ramp_down(0, 10);
+      board->set_ramp_up(channel, 5);
+      board->set_ramp_down(channel, 10);
+      board->set_current(channel, 300e-6);
 
       ss.str({});
       ss << "hv_" << i << "_ch_" << channel << "_power";
