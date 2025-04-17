@@ -133,7 +133,7 @@ bool Monitoring::Execute(){
   m_data->vars.Get("part",part);
   m_data->monitoring_store.Get("pool_threads",workers);
   
-  tmp<< runinfo<<" buffers: unsorted| sorted| triggered| readout = "<<m_data->readout.size()<<"| "<<m_data->sorted_readout.size()<<"| "<<m_data->triggered_readout.size()<<"| "<<" (files="<<part<<") jobs:workers = "<<m_data->job_queue.size()<<":"<<workers<<" mem="<<mem<<"% cpu="<<cpu<<"%";;
+  tmp<< runinfo<<" buffers: unsorted| sorted| triggered| final | monitoring readout = "<<m_data->readout.size()<<"| "<<m_data->sorted_readout.size()<<"| "<<m_data->triggered_readout.size()<<"| "<<m_data->triggered_readout.size()<<"| "<<m_data->triggered_readout.size()<<"| "<<" (files="<<part<<") jobs:workers = "<<m_data->job_queue.size()<<":"<<workers<<" mem="<<mem<<"% cpu="<<cpu<<"%";;
   m_data->vars.Set("Status",tmp.str());
   
   return true;

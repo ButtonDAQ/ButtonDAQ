@@ -151,8 +151,8 @@ void Reformatter::reformat() {
                           throw std::runtime_error(ss.str());
                         };
 
-                        buffer.push_back(std::move(hit));
                         ++m_data->channel_hits[hit.channel];
+                        buffer.push_back(std::move(hit));
                         return true;
                       }
                   );
@@ -168,6 +168,8 @@ void Reformatter::reformat() {
       start = end;
     };
   };
+
+  send_timeslice(start, buffer);
 };
 
 void Reformatter::start_reformatting() {
