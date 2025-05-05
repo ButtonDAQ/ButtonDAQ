@@ -12,6 +12,47 @@
 
 class HVoltage: public ToolFramework::Tool {
   public:
+    class Monitor {
+      public:
+        struct Channel {
+          float   voltage;
+          float   current;
+          float   voltage_setting;
+          float   current_setting;
+          bool    power;
+          int16_t temperature;
+          int8_t  status;
+        };
+
+        Monitor(
+            DataModel&                      data,
+            const std::vector<caen::V6534>& boards,
+            std::chrono::seconds            interval
+        );
+        ~Monitor();
+
+        void set_interval(std::chrono::seconds interval);
+
+      private:
+        ToolFramework::Services&              services;
+        ToolFramework::SlowControlCollection& ui;
+        const std::vector<caen::V6534>&       boards;
+        std::vector<std::array<Channel, 6>>   channels;
+        int8_t                                status;
+        std::chrono::seconds                  interval;
+        std::thread                           thread;
+        std::mutex                            readout_mutex;
+        std::timed_mutex                      monitor_mutex;
+        std::chrono::steady_clock::time_point readout_time;
+        ToolFramework::SlowControlElement*    get_state = nullptr;
+
+        void stop();
+        void start();
+
+        void monitor();
+        void readout();
+    };
+
     HVoltage();
 
     bool Initialise(std::string configfile, DataModel& data);
@@ -21,30 +62,8 @@ class HVoltage: public ToolFramework::Tool {
     void connect();
     void disconnect();
     void configure();
- private:
-    class Monitor {
-      public:
-        Monitor(
-            ToolFramework::Services&        services,
-            const std::vector<caen::V6534>& boards,
-            std::chrono::seconds            interval
-        );
-        ~Monitor();
 
-        void set_interval(std::chrono::seconds interval);
-
-      private:
-        ToolFramework::Services&        services;
-        const std::vector<caen::V6534>& boards;
-        std::chrono::seconds            interval;
-        std::thread                     thread;
-        std::timed_mutex                mutex;
-
-        void stop();
-        void start();
-
-        void monitor();
-    };
+  private:
 
     std::unique_ptr<Monitor> monitor;
 
