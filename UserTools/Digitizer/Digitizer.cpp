@@ -1,5 +1,7 @@
 #include <unordered_map>
 
+#include <caen++/vme.hpp>
+
 #include "DataModel.h"
 
 #include "Digitizer.h"
@@ -16,6 +18,18 @@ Digitizer::Monitor::Monitor(
 Digitizer::Monitor::~Monitor() {
   stop();
 };
+
+// We have two VME crates connected to the readout unit. This function attempts
+// to detect the USB link number leading to the digitizer crate. It connects to
+// the VME bridge and reads its firmware version number. High voltage bridge
+// has firmware version 2.18, while the digitizers bridge has firmware version
+// 2.17. (The proper way would be to read the BA rotary switches status
+// register, but at present they are both set to the same value.)
+static uint32_t detect_link() {
+  uint32_t link = 0;
+  return caen::Bridge(cvV1718, &link, 0).firmwareRelease() == "2.17" ? 0 : 1;
+};
+
 
 void Digitizer::Monitor::monitor() {
   do {
@@ -184,7 +198,8 @@ void Digitizer::connect() {
       connection.conet = caen::Connection::Conet::None;
 
     connection.link = 0;
-    m_variables.Get("bridge_link", connection.link);
+    if (!m_variables.Get("bridge_link", connection.link))
+      connection.link = detect_link();
 
     connection.node = 0;
     m_variables.Get("bridge_node", connection.node);
