@@ -90,11 +90,6 @@ void HVoltage::configure() {
       ss.str({});
       ss << "hv_" << i << "_ch_" << channel << "_power";
       std::string var = ss.str();
-      bool power = false;
-      m_variables.Get(var, power);
-      if (board->power(channel) != power)
-        board->set_power(channel, power);
-
       auto element = ui_add(
           ui, var, OPTIONS,
           [&ui, board, channel](std::string name) -> std::string {
@@ -105,16 +100,11 @@ void HVoltage::configure() {
       );
       element->AddOption("on");
       element->AddOption("off");
-      element->SetValue(power ? "on" : "off");
+      element->SetValue(board->power(channel) ? "on" : "off");
 
       ss.str({});
       ss << "hv_" << i << "_ch_" << channel << "_voltage";
       var = ss.str();
-      float voltage = 0;
-      m_variables.Get(var, voltage);
-      if (board->voltage_setting(channel) != voltage)
-        board->set_voltage(channel, voltage);
-
       element = ui_add(
           ui, var, VARIABLE,
           [&ui, board, channel](std::string name) -> std::string {
@@ -126,7 +116,7 @@ void HVoltage::configure() {
       element->SetMin(0);
       element->SetMax(2e3);
       element->SetStep(0.1);
-      element->SetValue(voltage);
+      element->SetValue(board->voltage_setting(channel));
 
       controls.push_back(element);
     };
