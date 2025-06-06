@@ -7,10 +7,11 @@
 #include "Digitizer.h"
 
 Digitizer::Monitor::Monitor(
-    ToolFramework::Services& services,
+    ToolFramework::Services&  services,
     const std::vector<Board>& boards,
-    std::chrono::seconds     interval
-): services(services), boards(boards), interval(interval)
+    std::chrono::seconds      interval,
+    ToolFramework::Logging&   log
+): services(services), boards(boards), interval(interval), log(log)
 {
   start();
 };
@@ -20,26 +21,34 @@ Digitizer::Monitor::~Monitor() {
 };
 
 void Digitizer::Monitor::monitor() {
-  do {
-    Store data;
-    int b = 0;
-    for (auto& board : boards) {
-      auto prefix = "digitizer_" + std::to_string(b++);
-      for (unsigned c = 0; c < 16; ++c)
-        data.Set(
-            prefix + "_channel_" + std::to_string(c) + "_temperature",
-            board.digitizer.readTemperature(c)
-        );
-    };
+  try {
+    do {
+      Store data;
+      int b = 0;
+      for (auto& board : boards) {
+        auto prefix = "digitizer_" + std::to_string(b++);
+        for (unsigned c = 0; c < 16; ++c)
+          data.Set(
+              prefix + "_channel_" + std::to_string(c) + "_temperature",
+              board.digitizer.readTemperature(c)
+          );
+      };
 
-    std::string json;
-    data >> json;
-    services.SendMonitoringData(std::move(json), "Digitizer");
+      std::string json;
+      data >> json;
+      services.SendMonitoringData(std::move(json), "Digitizer");
 
-    // Locking a mutex seems to be the simplest way to implement an
-    // interruptible sleep in C++11
-  } while (!mutex.try_lock_for(interval));
-  mutex.unlock();
+      // Locking a mutex seems to be the simplest way to implement an
+      // interruptible sleep in C++11
+    } while (!mutex.try_lock_for(interval));
+    mutex.unlock();
+  } catch (std::exception& e) {
+    log
+      << ToolFramework::MsgL(0, 0)
+      << "Digitizer::Monitor: "
+      << e.what()
+      << std::endl;
+  };
 };
 
 void Digitizer::Monitor::start() {
@@ -371,13 +380,20 @@ void Digitizer::configure() {
     ++i;
   };
 
+  m_data->digitizer_time_offset.resize(digitizers.size());
+  std::fill(
+      m_data->digitizer_time_offset.begin(),
+      m_data->digitizer_time_offset.end(),
+      0
+  );
+
   i = 60;
   m_variables.Get("monitor_interval", i);
   auto interval = std::chrono::seconds(i);
   if (monitor)
     monitor->set_interval(interval);
   else if (m_data->services)
-    monitor.reset(new Monitor(*m_data->services, digitizers, interval));
+    monitor.reset(new Monitor(*m_data->services, digitizers, interval, *m_log));
 
   if (bridge) {
     // Expect that bridge OUT0 is connected to S-IN of one digitizer, this

@@ -42,6 +42,7 @@ class Reformatter: public ToolFramework::Tool {
     Time dead_time;
 
     bool reformatting = false;
+    bool error        = false;
     std::thread thread;
 
     void configure();

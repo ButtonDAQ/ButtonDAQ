@@ -27,7 +27,8 @@ class HVoltage: public ToolFramework::Tool {
         Monitor(
             DataModel&                      data,
             const std::vector<caen::V6534>& boards,
-            std::chrono::seconds            interval
+            std::chrono::seconds            interval,
+            ToolFramework::Logging&         log
         );
         ~Monitor();
 
@@ -45,6 +46,7 @@ class HVoltage: public ToolFramework::Tool {
         std::timed_mutex                      monitor_mutex;
         std::chrono::steady_clock::time_point readout_time;
         ToolFramework::SlowControlElement*    get_state = nullptr;
+        ToolFramework::Logging&               log;
 
         void stop();
         void start();

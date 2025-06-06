@@ -73,107 +73,118 @@ void Reformatter::reformat() {
    * `current` data is then sent for processing.
    */
 
-  Time start;
-  Time time;
+  try {
+    Time start;
+    Time time;
 
-  while (reformatting) {
-    if (m_data->raw_readout) {
-      {
-        std::lock_guard<std::mutex> lock(m_data->raw_readout_mutex);
-        readouts.push_back(std::move(m_data->raw_readout));
+    while (reformatting) {
+      if (m_data->raw_readout) {
+	{
+	  std::lock_guard<std::mutex> lock(m_data->raw_readout_mutex);
+	  readouts.push_back(std::move(m_data->raw_readout));
+	};
+
+	for (auto& board : *readouts.back())
+	  for (auto& hit : *board) {
+	    if (hit.channel >= channels.size()) {
+	      std::stringstream ss;
+	      ss << "Unexpected hit channel " << static_cast<int>(hit.channel);
+	      throw std::runtime_error(ss.str());
+	    };
+
+	    Channel& channel = channels[hit.channel];
+	    if (channel.active) {
+	      if (hit.time > channel.time) channel.time = hit.time;
+	    } else {
+	      channel.active = true;
+	      channel.time = hit.time;
+	    };
+	  };
+      } else {
+	usleep(interval.seconds() * 0.5e6);
+	continue;
       };
 
-      for (auto& board : *readouts.back())
-        for (auto& hit : *board) {
-          if (hit.channel >= channels.size()) {
-            std::stringstream ss;
-            ss << "Unexpected hit channel " << static_cast<int>(hit.channel);
-            throw std::runtime_error(ss.str());
-          };
-
-          Channel& channel = channels[hit.channel];
-          if (channel.active) {
-            if (hit.time > channel.time) channel.time = hit.time;
-          } else {
-            channel.active = true;
-            channel.time = hit.time;
-          };
-        };
-    } else {
-      usleep(interval.seconds() * 0.5e6);
-      continue;
-    };
-
-    for (auto& channel : channels)
-      if (channel.time > time)
-        time = channel.time;
-
-    while (true) {
-      Time end = start + interval;
-      if (time < end) break;
-
-      bool done = false;
       for (auto& channel : channels)
-        if (channel.active && channel.time < end)
-          if (channel.time + dead_time > time) {
-            // some channel may yet provide data fitting the current time
-            // window
-            done = true;
-            break;
-          } else {
-            channel.active = false;
-            done = done && channel.time >= start;
-          };
-      if (done) break;
+	if (channel.time > time)
+	  time = channel.time;
 
-      // Move hits fitting the next timeslice from readouts to buffer
-      remove_if(
-          readouts,
-          [this, start, end](
-            std::unique_ptr<
-              std::list<std::unique_ptr<std::vector<Hit>>>
-            >& readout
-          ) -> bool {
-            remove_if(
-                *readout,
-                [this, start, end](std::unique_ptr<std::vector<Hit>>& board) -> bool {
-                  remove_if(
-                      *board,
-                      [this, start, end](Hit& hit) -> bool {
-                        if (hit.time >= end) return false;
-                        if (hit.time < start) {
-                          std::stringstream ss;
-                          ss
-                            << "Reformatter: delayed hit in channel "
-                            << static_cast<int>(hit.channel)
-                            << ": " << hit.time.bits() << " (" << hit.time.seconds() << " s) < "
-                            << start.bits() << " (" << start.seconds() << " s)";
-                          throw std::runtime_error(ss.str());
-                        };
+      while (true) {
+	Time end = start + interval;
+	if (time < end) break;
 
-                        ++m_data->channel_hits[hit.channel];
-                        buffer.push_back(std::move(hit));
-                        return true;
-                      }
-                  );
-                  return board->empty();
-                }
-            );
-            return readout->empty();
-          }
-      );
+	bool done = false;
+	for (auto& channel : channels)
+	  if (channel.active && channel.time < end)
+	    if (channel.time + dead_time > time) {
+	      // some channel may yet provide data fitting the current time
+	      // window
+	      done = true;
+	      break;
+	    } else
+	      channel.active = false;
+	if (done) break;
 
-      send_timeslice(start, buffer);
+	// Move hits fitting the next timeslice from readouts to buffer
+	remove_if(
+	    readouts,
+	    [this, start, end](
+	      std::unique_ptr<
+		std::list<std::unique_ptr<std::vector<Hit>>>
+	      >& readout
+	    ) -> bool {
+	      remove_if(
+		  *readout,
+		  [this, start, end](std::unique_ptr<std::vector<Hit>>& board) -> bool {
+		    remove_if(
+			*board,
+			[this, start, end](Hit& hit) -> bool {
+			  if (hit.time >= end) return false;
+			  if (hit.time < start) {
+			    std::stringstream ss;
+			    ss
+			      << "Reformatter: delayed hit in channel "
+			      << static_cast<int>(hit.channel)
+			      << ": "
+			      << hit.time.bits()
+			      << " ("
+			      << hit.time.seconds()
+			      << " s) < "
+			      << start.bits()
+			      << " ("
+			      << start.seconds()
+			      << " s)";
+			    throw std::runtime_error(ss.str());
+			  };
 
-      start = end;
+			  ++m_data->channel_hits[hit.channel];
+			  buffer.push_back(std::move(hit));
+			  return true;
+			}
+		    );
+		    return board->empty();
+		  }
+	      );
+	      return readout->empty();
+	    }
+	);
+
+	send_timeslice(start, buffer);
+
+	start = end;
+      };
     };
-  };
 
-  send_timeslice(start, buffer);
+    send_timeslice(start, buffer);
+  } catch (std::exception& e) {
+    *m_log << "Reformatter: " << e.what() << std::endl;
+    error = true;
+  };
 };
 
 void Reformatter::start_reformatting() {
   reformatting = true;
+  error	       = false;
   thread = std::thread(&Reformatter::reformat, this);
 };
 
@@ -195,6 +206,11 @@ bool Reformatter::Initialise(std::string configfile, DataModel& data) {
 }
 
 bool Reformatter::Execute() {
+  if (error) {
+    stop_reformatting();
+    error = false;
+  };
+
   if (m_data->run_stop && reformatting) stop_reformatting();
 
   if (m_data->change_config) {

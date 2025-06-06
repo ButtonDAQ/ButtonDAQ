@@ -40,7 +40,8 @@ class Digitizer: public ToolFramework::Tool {
         Monitor(
             ToolFramework::Services&  services,
             const std::vector<Board>& boards,
-            std::chrono::seconds      interval
+            std::chrono::seconds      interval,
+            ToolFramework::Logging&   log
         );
         ~Monitor();
 
@@ -52,6 +53,7 @@ class Digitizer: public ToolFramework::Tool {
         std::chrono::seconds      interval;
         std::thread               thread;
         std::timed_mutex          mutex;
+        ToolFramework::Logging&   log;
 
         void start();
         void stop();

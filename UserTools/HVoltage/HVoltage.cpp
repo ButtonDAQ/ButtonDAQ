@@ -183,11 +183,13 @@ std::string& json_esc(std::string& string) {
 HVoltage::Monitor::Monitor(
     DataModel&                      data,
     const std::vector<caen::V6534>& boards,
-    std::chrono::seconds            interval
+    std::chrono::seconds            interval,
+    ToolFramework::Logging&         log
 ): services(*data.services),
    ui(data.sc_vars),
    boards(boards),
-   interval(interval)
+   interval(interval),
+   log(log)
 {
   std::chrono::steady_clock::time_point update;
 
@@ -255,29 +257,37 @@ void HVoltage::Monitor::readout() {
 };
 
 void HVoltage::Monitor::monitor() {
-  do {
-    readout();
+  try {
+    do {
+      readout();
 
-    Store data;
-    for (size_t b = 0; b < boards.size(); ++b) {
-      auto bprefix = "hv_" + std::to_string(b);
-      for (uint8_t c = 0; c < 6; ++c) {
-        auto& channel = channels[b][c];
-        auto cprefix = bprefix + "_channel_" + std::to_string(c);
-        data.Set(cprefix + "_power",       channel.power ? "on" : "off");
-        data.Set(cprefix + "_voltage",     channel.voltage);
-        data.Set(cprefix + "_current",     channel.current);
-        data.Set(cprefix + "_temperature", channel.temperature);
-        data.Set(cprefix + "_status",      static_cast<int>(channel.status));
+      Store data;
+      for (size_t b = 0; b < boards.size(); ++b) {
+        auto bprefix = "hv_" + std::to_string(b);
+        for (uint8_t c = 0; c < 6; ++c) {
+          auto& channel = channels[b][c];
+          auto cprefix = bprefix + "_channel_" + std::to_string(c);
+          data.Set(cprefix + "_power",       channel.power ? "on" : "off");
+          data.Set(cprefix + "_voltage",     channel.voltage);
+          data.Set(cprefix + "_current",     channel.current);
+          data.Set(cprefix + "_temperature", channel.temperature);
+          data.Set(cprefix + "_status",      static_cast<int>(channel.status));
+        };
       };
-    };
 
-    std::string json;
-    data >> json;
-    services.SendMonitoringData(json, "HVoltage");
+      std::string json;
+      data >> json;
+      services.SendMonitoringData(json, "HVoltage");
 
-    // interruptable sleep
-  } while (!monitor_mutex.try_lock_for(interval));
+      // interruptable sleep
+    } while (!monitor_mutex.try_lock_for(interval));
+   } catch (std::exception& e) {
+     log
+       << ToolFramework::MsgL(0, 0)
+       << "HVoltage::Monitor: "
+       << e.what()
+       << std::endl;
+   };
 };
 
 bool HVoltage::Initialise(std::string configfile, DataModel& data) {
@@ -293,7 +303,9 @@ bool HVoltage::Initialise(std::string configfile, DataModel& data) {
     int interval = 5;
     m_variables.Get("monitor_interval", interval);
 
-    monitor.reset(new Monitor(*m_data, boards, std::chrono::seconds(interval)));
+    monitor.reset(
+        new Monitor(*m_data, boards, std::chrono::seconds(interval), *m_log)
+    );
 
     auto element = ui_add(
         m_data->sc_vars,
