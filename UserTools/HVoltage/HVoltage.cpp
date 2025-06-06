@@ -57,7 +57,7 @@ void HVoltage::connect() {
     info() << "success" << std::endl;
 
     if (m_verbose >= 3) {
-      auto& hv = boards.back();
+      auto& hv = boards.back().hv;
       info()
         << "model: " << hv.model() << ' ' << hv.description() << '\n'
         << "serial number: " << hv.serial_number() << '\n'
@@ -79,13 +79,14 @@ void HVoltage::configure() {
   controls.reserve(boards.size() * 6);
 
   std::stringstream ss;
-  for (unsigned i = 0; i < boards.size(); ++i) {
-    caen::V6534* board = &boards[i];
+  auto iboard = boards.begin();
+  for (unsigned i = 0; i < boards.size(); ++i, ++iboard) {
+    Board* board = &*iboard; // this pointer is captured below
     for (int channel = 0; channel < 6; ++channel) {
-      board->set_pwdown(channel, caen::V6534::PowerDownMode::ramp);
-      board->set_ramp_up(channel, 5);
-      board->set_ramp_down(channel, 10);
-      board->set_current(channel, 300e-6);
+      board->hv.set_pwdown(channel, caen::V6534::PowerDownMode::ramp);
+      board->hv.set_ramp_up(channel, 5);
+      board->hv.set_ramp_down(channel, 10);
+      board->hv.set_current(channel, 300e-6);
 
       ss.str({});
       ss << "hv_" << i << "_ch_" << channel << "_power";
@@ -94,13 +95,14 @@ void HVoltage::configure() {
           ui, var, OPTIONS,
           [&ui, board, channel](std::string name) -> std::string {
             auto value = ui.GetValue<std::string>(name);
-            board->set_power(channel, value == "on");
+            std::lock_guard<std::mutex> lock(board->mutex);
+            board->hv.set_power(channel, value == "on");
             return "ok";
           }
       );
       element->AddOption("on");
       element->AddOption("off");
-      element->SetValue(board->power(channel) ? "on" : "off");
+      element->SetValue(board->hv.power(channel) ? "on" : "off");
 
       ss.str({});
       ss << "hv_" << i << "_ch_" << channel << "_voltage";
@@ -109,14 +111,15 @@ void HVoltage::configure() {
           ui, var, VARIABLE,
           [&ui, board, channel](std::string name) -> std::string {
             auto value = ui.GetValue<float>(name);
-            board->set_voltage(channel, value);
+            std::lock_guard<std::mutex> lock(board->mutex);
+            board->hv.set_voltage(channel, value);
             return "ok";
           }
       );
       element->SetMin(0);
       element->SetMax(2e3);
       element->SetStep(0.1);
-      element->SetValue(board->voltage_setting(channel));
+      element->SetValue(board->hv.voltage_setting(channel));
 
       controls.push_back(element);
     };
@@ -126,9 +129,11 @@ void HVoltage::configure() {
     ui_add(
         ui, "Shutdown_all", BUTTON,
         [this](std::string name) -> std::string {
-          for (auto& board : boards)
+          for (auto& board : boards) {
+            std::lock_guard<std::mutex> lock(board.mutex);
             for (int channel = 0; channel < 6; ++channel)
-              board.set_power(channel, false);
+              board.hv.set_power(channel, false);
+          };
 
           std::stringstream ss;
           for (size_t i = 0; i < boards.size(); ++i)
@@ -171,10 +176,10 @@ std::string& json_esc(std::string& string) {
 };
 
 HVoltage::Monitor::Monitor(
-    DataModel&                      data,
-    const std::vector<caen::V6534>& boards,
-    std::chrono::seconds            interval,
-    ToolFramework::Logging&         log
+    DataModel&              data,
+    std::list<Board>&       boards,
+    std::chrono::seconds    interval,
+    ToolFramework::Logging& log
 ): services(*data.services),
    ui(data.sc_vars),
    boards(boards),
@@ -228,18 +233,19 @@ void HVoltage::Monitor::readout() {
 
   if (channels.size() != boards.size()) channels.resize(boards.size());
 
-  for (size_t b = 0; b < boards.size(); ++b) {
-    auto& board    = boards[b];
+  auto board = boards.begin();
+  for (size_t b = 0; b < boards.size(); ++b, ++board) {
     auto& channels = this->channels[b];
+    std::lock_guard<std::mutex> lock(board->mutex);
     for (uint8_t c = 0; c < 6; ++c) {
       auto& channel = channels[c];
-      channel.voltage         = board.voltage(c);
-      channel.current         = board.current(c);
-      channel.voltage_setting = board.voltage_setting(c);
-      channel.current_setting = board.current_setting(c);
-      channel.power           = board.power(c);
-      channel.temperature     = board.temperature(c);
-      channel.status          = board.status(c);
+      channel.voltage         = board->hv.voltage(c);
+      channel.current         = board->hv.current(c);
+      channel.voltage_setting = board->hv.voltage_setting(c);
+      channel.current_setting = board->hv.current_setting(c);
+      channel.power           = board->hv.power(c);
+      channel.temperature     = board->hv.temperature(c);
+      channel.status          = board->hv.status(c);
     };
   };
 

@@ -13,6 +13,15 @@
 
 class HVoltage: public ToolFramework::Tool {
   public:
+    struct Board {
+      caen::V6534 hv;
+      std::mutex  mutex;
+
+      Board(caen::V6534 hv): hv(std::move(hv)) {};
+
+      Board(Board&&) = default;
+    };
+
     class Monitor {
       public:
         struct Channel {
@@ -26,10 +35,10 @@ class HVoltage: public ToolFramework::Tool {
         };
 
         Monitor(
-            DataModel&                      data,
-            const std::vector<caen::V6534>& boards,
-            std::chrono::seconds            interval,
-            ToolFramework::Logging&         log
+            DataModel&              data,
+            std::list<Board>&       boards,
+            std::chrono::seconds    interval,
+            ToolFramework::Logging& log
         );
         ~Monitor();
 
@@ -38,7 +47,7 @@ class HVoltage: public ToolFramework::Tool {
       private:
         ToolFramework::Services&              services;
         ToolFramework::SlowControlCollection& ui;
-        const std::vector<caen::V6534>&       boards;
+        std::list<Board>&                     boards;
         std::vector<std::array<Channel, 6>>   channels;
         int8_t                                status;
         std::chrono::seconds                  interval;
@@ -70,7 +79,7 @@ class HVoltage: public ToolFramework::Tool {
 
     std::unique_ptr<Monitor> monitor;
 
-    std::vector<caen::V6534> boards;
+    std::list<Board> boards;
     std::vector<ToolFramework::SlowControlElement*> controls;
 
     HandleList<std::function<void ()>>::Handle terminator;

@@ -3,6 +3,7 @@
 
 #include <chrono>
 #include <iostream>
+#include <list>
 #include <memory>
 #include <string>
 #include <vector>
@@ -30,6 +31,16 @@ class Digitizer: public ToolFramework::Tool {
       caen::Digitizer::ReadoutBuffer                               buffer;
       caen::Digitizer::DPPEvents<CAEN_DGTZ_DPP_PSD_Event_t>        events;
       caen::Digitizer::DPPWaveforms<CAEN_DGTZ_DPP_PSD_Waveforms_t> waveforms;
+      std::mutex                                                   mutex;
+
+      Board(uint8_t id, uint8_t sync_channel, caen::Digitizer digitizer):
+        id(id),
+        sync_channel(sync_channel),
+        active(false),
+        digitizer(std::move(digitizer))
+      {};
+
+      Board(Board&&) = default;
     };
 
     struct ReadoutThread {
@@ -41,7 +52,7 @@ class Digitizer: public ToolFramework::Tool {
       public:
         Monitor(
             ToolFramework::Services&  services,
-            const std::vector<Board>& boards,
+            std::list<Board>&         boards,
             std::chrono::seconds      interval,
             ToolFramework::Logging&   log
         );
@@ -50,12 +61,12 @@ class Digitizer: public ToolFramework::Tool {
         void set_interval(std::chrono::seconds);
 
       private:
-        ToolFramework::Services&  services;
-        const std::vector<Board>& boards;
-        std::chrono::seconds      interval;
-        std::thread               thread;
-        std::timed_mutex          mutex;
-        ToolFramework::Logging&   log;
+        ToolFramework::Services& services;
+        std::list<Board>&        boards;
+        std::chrono::seconds     interval;
+        std::thread              thread;
+        std::timed_mutex         mutex;
+        ToolFramework::Logging&  log;
 
         void start();
         void stop();
@@ -63,7 +74,7 @@ class Digitizer: public ToolFramework::Tool {
         void monitor();
     };
 
-    std::vector<Board> digitizers;
+    std::list<Board> digitizers;
     std::unique_ptr<caen::Bridge> bridge;
     uint16_t nsamples; // number of samples in waveforms
 

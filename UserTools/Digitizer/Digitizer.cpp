@@ -7,10 +7,10 @@
 #include "Digitizer.h"
 
 Digitizer::Monitor::Monitor(
-    ToolFramework::Services&  services,
-    const std::vector<Board>& boards,
-    std::chrono::seconds      interval,
-    ToolFramework::Logging&   log
+    ToolFramework::Services& services,
+    std::list<Board>&        boards,
+    std::chrono::seconds     interval,
+    ToolFramework::Logging&  log
 ): services(services), boards(boards), interval(interval), log(log)
 {
   start();
@@ -27,6 +27,7 @@ void Digitizer::Monitor::monitor() {
       int b = 0;
       for (auto& board : boards) {
         auto prefix = "digitizer_" + std::to_string(b++);
+        std::lock_guard<std::mutex> lock(board.mutex);
         for (unsigned c = 0; c < 16; ++c)
           data.Set(
               prefix + "_channel_" + std::to_string(c) + "_temperature",
@@ -74,7 +75,7 @@ void Digitizer::connect() {
   std::string link_string;
 
   // link_arg -> indices of digitizers to be read out in the same thread
-  std::unordered_map<uint32_t, std::list<int>> threads_partition;
+  std::unordered_map<uint32_t, std::list<Board*>> threads_partition;
 
   for (int i = 0; ; ++i) {
     ss.str({});
@@ -140,28 +141,26 @@ void Digitizer::connect() {
       << ")..."
       << std::flush;
     digitizers.emplace_back(
-        Board {
-          static_cast<uint8_t>(i),
-          sync_channel,
-          false,
-          caen::Digitizer(link, arg, conet, vme),
-          caen::Digitizer::ReadoutBuffer(),
-          caen::Digitizer::DPPEvents<CAEN_DGTZ_DPP_PSD_Event_t>(),
-          caen::Digitizer::DPPWaveforms<CAEN_DGTZ_DPP_PSD_Waveforms_t>()
-        }
+        static_cast<uint8_t>(i),
+        sync_channel,
+        caen::Digitizer(link, arg, conet, vme)
     );
     info() << "success" << std::endl;
+
+    Board* board = &digitizers.back();
 
     {
       auto partition = threads_partition.find(arg);
       if (partition == threads_partition.end())
-        threads_partition.emplace(std::pair<uint32_t, std::list<int>>(arg, { i }));
+        threads_partition.emplace(
+            std::pair<uint32_t, std::list<Board*>>(arg, { board })
+        );
       else
-        partition->second.push_back(i);
+        partition->second.push_back(board);
     };
 
     if (m_verbose > 2) {
-      auto& i = digitizers.back().digitizer.info();
+      auto& i = board->digitizer.info();
       log(3)
         << "model name: " << i.ModelName << '\n'
         << "model: " << i.Model << '\n'
@@ -177,7 +176,7 @@ void Digitizer::connect() {
   for (auto& partitions : threads_partition) {
     std::vector<Board*> boards;
     boards.reserve(partitions.second.size());
-    for (int i : partitions.second) boards.push_back(&digitizers[i]);
+    for (Board* b : partitions.second) boards.push_back(b);
     ReadoutThread thread;
     thread.boards = std::move(boards);
     readout_threads.push_back(std::move(thread));
@@ -507,23 +506,25 @@ void Digitizer::synchronize() {
 
     // get hit times in sync channels and store them in times
     int missing_hits = 0;
-    for (size_t d = 0; d < digitizers.size(); ++d) {
+    size_t d = 0;
+    for (auto& board : digitizers) {
       // flush
-      digitizers[d].digitizer.writeRegister(0x8040, 1);
+      board.digitizer.writeRegister(0x8040, 1);
 
       times[d] = 0;
-      auto hits = readout(digitizers[d], 0);
-      if (!hits) {
+      auto hits = readout(board, 0);
+      if (hits) {
+        for (auto& hit : *hits)
+          if ((hit.channel & 0xF) == board.sync_channel) {
+            times[d] = hit.time.bits();
+            break;
+          };
+        if (times[d] == 0) ++missing_hits;
+        data.emplace_back(std::move(hits));
+      } else
         ++missing_hits;
-        continue;
-      };
-      for (auto& hit : *hits)
-        if ((hit.channel & 0xF) == digitizers[d].sync_channel) {
-          times[d] = hit.time.bits();
-          break;
-        };
-      if (times[d] == 0) ++missing_hits;
-      data.emplace_back(std::move(hits));
+
+      ++d;
     };
 
     if (missing_hits) {
@@ -601,10 +602,13 @@ std::unique_ptr<std::vector<Hit>>
 Digitizer::readout(Board& board, Time offset) {
   // board.digitizer.sendSWTrigger(); // FIXME: software trigger for testing
 
-  // flush // FIXME: for testing --- remove in operation
-  board.digitizer.writeRegister(0x8040, 1);
+  {
+    std::lock_guard<std::mutex> lock(board.mutex);
+    // flush // FIXME: for testing --- remove in operation
+    board.digitizer.writeRegister(0x8040, 1);
 
-  board.digitizer.readData(CAEN_DGTZ_SLAVE_TERMINATED_READOUT_MBLT, board.buffer);
+    board.digitizer.readData(CAEN_DGTZ_SLAVE_TERMINATED_READOUT_MBLT, board.buffer);
+  };
   if (board.digitizer.getNumEvents(board.buffer) == 0) return nullptr;
 
   board.digitizer.getEvents(board.buffer, board.events);
