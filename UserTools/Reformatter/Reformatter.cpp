@@ -52,10 +52,12 @@ void Reformatter::configure() {
 
   channels.resize(m_data->enabled_digitizer_channels.size() * 16);
   {
-    int i = 0;
+    auto channel = channels.begin();
     for (uint16_t mask : m_data->enabled_digitizer_channels)
-      for (int j = 0; j < 16; ++j)
-        channels[i++].active = mask & 1 << j;
+      for (int j = 0; j < 16; ++j) {
+	channel->active = mask & 1 << j;
+	channel++->time = 0;
+      };
   };
 
   m_data->channel_hits.clear();
