@@ -32,6 +32,22 @@
 
 using namespace ToolFramework;
 
+
+// We have two VME crates connected to the readout unit. The vme_links field
+// stores which USB link number leads to which crate. They are initialised by
+// a call to detect() in Digitizer or HVoltage tools.
+class VMELinks {
+ public:
+   uint32_t digitizer();
+   uint32_t hvoltage();
+
+ private:
+   // find a VME bridge with the given value of BA register
+   uint32_t scan(uint8_t address);
+   uint32_t m_digitizer = ~0;
+   uint32_t m_hvoltage  = ~0;
+};
+
 class DataModel : public DAQDataModelBase {
 
 
@@ -91,6 +107,7 @@ class DataModel : public DAQDataModelBase {
 
   
   std::vector<size_t> channel_hits;
+  VMELinks vme_links;
   
 
 private:

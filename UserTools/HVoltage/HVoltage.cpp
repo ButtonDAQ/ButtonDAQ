@@ -22,17 +22,6 @@ static SlowControlElement* ui_add(
   return ui[name];
 };
 
-// We have two VME crates connected to the readout unit. This function attempts
-// to detect the USB link number leading to the high voltage crate. It connects
-// to the VME bridge and reads its firmware version number. High voltage bridge
-// has firmware version 2.18, while the digitizers bridge has firmware version
-// 2.17. (The proper way would be to read the BA rotary switches status
-// register, but at present they are both set to the same value.)
-static uint32_t detect_link() {
-  uint32_t link = 0;
-  return caen::Bridge(cvV1718, &link, 0).firmwareRelease() == "2.17" ? 1 : 0;
-};
-
 HVoltage::HVoltage(): Tool() {}
 
 void HVoltage::connect() {
@@ -54,7 +43,7 @@ void HVoltage::connect() {
     connection.link = 0;
     ss << "hv_" << i << "_usb";
     if (!m_variables.Get(ss.str(), connection.link)) {
-      if (link == ~0) link = detect_link();
+      if (link == ~0) link = m_data->vme_links.hvoltage();
       connection.link = link;
     };
 
