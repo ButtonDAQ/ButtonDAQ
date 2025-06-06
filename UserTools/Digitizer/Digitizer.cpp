@@ -356,8 +356,9 @@ void Digitizer::configure() {
         digitizer.setChannelPulsePolarity(channel, polarity);
       };
 
-    // enable the extras word with extended and fine timestamps
-    digitizer.writeRegister(0x8000, 1, 17, 17);
+    // enable automatic buffer flush (1) and the extras word with extended and
+    // fine timestamps (17)
+    digitizer.writeRegister(0x8004, 1 | 1 << 17);
     // enable the fine timestamp
     digitizer.writeRegister(0x8084, 0b10 << 8);
     // disable propagation of software trigger to TRG-OUT
