@@ -23,6 +23,7 @@ class Digitizer: public ToolFramework::Tool {
   private:
     struct Board {
       uint8_t                                                      id;
+      uint8_t                                                      sync_channel;
       bool                                                         active;
       caen::Digitizer                                              digitizer;
       caen::Digitizer::ReadoutBuffer                               buffer;
@@ -77,8 +78,12 @@ class Digitizer: public ToolFramework::Tool {
     void start_acquisition();
     void stop_acquisition();
 
-    void readout(Board&);
+    void synchronize();
+
+    std::unique_ptr<std::vector<Hit>> readout(Board&, Time offset);
     void readout(const std::vector<Board*>&);
+
+    void pulse(int output, bool wide, uint8_t number);
 
     ToolFramework::Logging& log(int level) {
       return *m_log << ToolFramework::MsgL(level, m_verbose);

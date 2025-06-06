@@ -171,11 +171,11 @@ bool WindowBuilder::SelectData(void* data){
     std::vector<Hit>::iterator max_it;
     
     for(std::vector<Hit>::iterator it=args->time_slice->hits.begin(); it!= args->time_slice->hits.end(); it++){
-      if(it->time.bits()<trigger_groups.at(i).min) continue;
-      if(it->time.bits()>trigger_groups.at(i).max) break;
       if(!skip){
 	min_it=it;
 	skip=true;
+      if(it->sync_time.bits()<trigger_groups.at(i).min) continue;
+      if(it->sync_time.bits()>trigger_groups.at(i).max) break;
       }
       max_it=it;
       

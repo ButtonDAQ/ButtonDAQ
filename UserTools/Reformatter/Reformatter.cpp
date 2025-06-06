@@ -94,10 +94,10 @@ void Reformatter::reformat() {
 
 	    Channel& channel = channels[hit.channel];
 	    if (channel.active) {
-	      if (hit.time > channel.time) channel.time = hit.time;
+	      if (hit.sync_time > channel.time) channel.time = hit.sync_time;
 	    } else {
 	      channel.active = true;
-	      channel.time = hit.time;
+	      channel.time = hit.sync_time;
 	    };
 	  };
       } else {
@@ -139,16 +139,16 @@ void Reformatter::reformat() {
 		    remove_if(
 			*board,
 			[this, start, end](Hit& hit) -> bool {
-			  if (hit.time >= end) return false;
-			  if (hit.time < start) {
+			  if (hit.sync_time >= end) return false;
+			  if (hit.sync_time < start) {
 			    std::stringstream ss;
 			    ss
 			      << "Reformatter: delayed hit in channel "
 			      << static_cast<int>(hit.channel)
 			      << ": "
-			      << hit.time.bits()
+			      << hit.sync_time.bits()
 			      << " ("
-			      << hit.time.seconds()
+			      << hit.sync_time.seconds()
 			      << " s) < "
 			      << start.bits()
 			      << " ("

@@ -161,14 +161,14 @@ bool Trigger::TriggerData(void* data){
  //printf("d3\n");
   for(unsigned int i=0; i <args->time_slice->hits.size(); i++){
 
-    if(args->trigger_channels->count(args->time_slice->hits.at(i).channel)) args->time_slice->triggers.emplace(args->time_slice->triggers.end(), (*args->trigger_channels)[args->time_slice->hits.at(i).channel], args->time_slice->hits.at(i).time); // calib triggers
+    if(args->trigger_channels->count(args->time_slice->hits.at(i).channel)) args->time_slice->triggers.emplace(args->time_slice->triggers.end(), (*args->trigger_channels)[args->time_slice->hits.at(i).channel], args->time_slice->hits.at(i).sync_time); // calib triggers
     else{
       //printf("a=%lu\n",args->time_slice->hits.at(i).time.bits());
       //printf("b=%lu\n",args->time_slice->time.bits());
       //printf("c=%lu\n",(args->time_slice->hits.at(i).time.bits() - args->time_slice->time.bits())>>9);
       //printf("channel = %u\n", args->time_slice->hits[i].channel);
       
-      if(args->nhits) args->count[(args->time_slice->hits.at(i).time.bits() - args->time_slice->time.bits())>>9]++;
+      if(args->nhits) args->count[(args->time_slice->hits.at(i).sync_time.bits() - args->time_slice->time.bits())>>9]++;
     }
   }
   //printf("d4\n");

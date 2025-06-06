@@ -149,6 +149,7 @@ class Hit : SerialisableObject {
 public:
   
   Time     time;
+  Time     sync_time;
   uint16_t charge_short;
   uint16_t charge_long;
   uint16_t baseline;

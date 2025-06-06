@@ -119,7 +119,7 @@ bool Sorter::SortData(void* data){
   //printf("d1.5 %u\n",a); 
   std::sort(args->time_slice->hits.begin(), args->time_slice->hits.end(), [](Hit a, Hit b)
                                   {
-                                      return a.time < b.time;
+				    return a.sync_time < b.sync_time;
                                   });
   //printf("d2\n");
    args->sorted_readout_mutex->lock();

@@ -107,6 +107,8 @@ class DataModel : public DAQDataModelBase {
 
   
   std::vector<size_t> channel_hits;
+  std::vector<Time>   digitizer_time_offset;
+
   VMELinks vme_links;
   
 

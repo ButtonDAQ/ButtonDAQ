@@ -126,6 +126,11 @@ void Digitizer::connect() {
       ss >> std::hex >> vme;
     };
 
+    ss.str({});
+    ss << "digitizer_" << i << "_sync_channel";
+    uint8_t sync_channel = 0;
+    m_variables.Get(ss.str(), sync_channel);
+
     info()
       << "connecting to digitizer " << i
       << " (link = " << link_string
@@ -137,6 +142,7 @@ void Digitizer::connect() {
     digitizers.emplace_back(
         Board {
           static_cast<uint8_t>(i),
+          sync_channel,
           false,
           caen::Digitizer(link, arg, conet, vme),
           caen::Digitizer::ReadoutBuffer(),
@@ -415,40 +421,33 @@ void Digitizer::configure() {
       board.digitizer.writeRegister(0x811C, 0b11 << 16);
     };
 
-    bridge->setPulserConf(
-        cvPulserA,
-        {
-          .period = 255,
-          .width  = 255,
-          .unit   = cvUnit25ns,
-          .number = 1,
-          .start  = cvManualSW,
-          .reset  = cvManualSW
-        }
-    );
-
-    bridge->setOutputConf(
-      cvOutput0,
-      {
-        .polarity     = cvDirect,
-        .led_polarity = cvActiveHigh,
-        .source       = cvMiscSignals
-      }
-    );
+    caen::Bridge::OutputConf conf {
+      .polarity     = cvDirect,
+      .led_polarity = cvActiveHigh,
+      .source       = cvManualSW
+    };
+    bridge->setOutputConf(cvOutput0, conf);
+    bridge->setOutputConf(cvOutput1, conf);
   };
 }
 
 void Digitizer::start_acquisition() {
   acquiring = true;
-  for (auto& rt : readout_threads) {
-    for (auto board : rt.boards) {
-      info()
-        << "starting acquisition on digitizer "
-        << static_cast<int>(board->id)
-        << std::endl;
-      board->digitizer.SWStartAcquisition();
-      board->active = true;
-    };
+  for (auto& board : digitizers) {
+    info()
+      << "starting acquisition on digitizer "
+      << static_cast<int>(board.id)
+      << std::endl;
+    board.digitizer.SWStartAcquisition();
+    board.active = true;
+  };
+
+  pulse(0, true, 1);
+
+  usleep(100);
+  synchronize();
+
+  for (auto& rt : readout_threads)
     rt.thread = std::thread(
         static_cast<void (Digitizer::*)(const std::vector<Board*>&)>(
           &Digitizer::readout
@@ -456,8 +455,6 @@ void Digitizer::start_acquisition() {
         this,
         rt.boards
     );
-  };
-  if (bridge) bridge->startPulser(cvPulserA);
 };
 
 void Digitizer::stop_acquisition() {
@@ -475,11 +472,127 @@ void Digitizer::stop_acquisition() {
   };
 };
 
+void Digitizer::synchronize() {
+  if (!bridge) return;
+
+  int npulses = 0;
+  m_variables.Get("synchronization_pulses", npulses);
+  if (!npulses) return;
+
+  // Time is based upon uint64_t and result in undefined behaviour with
+  // negative values. We cast it to int64_t here --- at this point in the run,
+  // most of the most significant bits are zero anyway.
+  std::vector<int64_t> times(digitizers.size());
+  std::vector<int64_t> offsets(digitizers.size());
+
+  size_t n = 0; // number of pulses recorded
+
+  std::list<std::unique_ptr<std::vector<Hit>>> data;
+  for (int p = 0; p < npulses; ++p) {
+    // send a pulse
+    pulse(1, false, 1);
+
+    // get hit times in sync channels and store them in times
+    int missing_hits = 0;
+    for (size_t d = 0; d < digitizers.size(); ++d) {
+      // flush
+      digitizers[d].digitizer.writeRegister(0x8040, 1);
+
+      times[d] = 0;
+      auto hits = readout(digitizers[d], 0);
+      if (!hits) {
+        ++missing_hits;
+        continue;
+      };
+      for (auto& hit : *hits)
+        if ((hit.channel & 0xF) == digitizers[d].sync_channel) {
+          times[d] = hit.time.bits();
+          break;
+        };
+      if (times[d] == 0) ++missing_hits;
+      data.emplace_back(std::move(hits));
+    };
+
+    if (missing_hits) {
+      if (m_verbose > 0) {
+        auto& log
+          = warn()
+              << "Digitizer: missing synchronization pulse "
+              << p
+              << " in channel";
+        if (missing_hits > 1) log << 's';
+        for (size_t d = 0; d < times.size(); ++d)
+          if (times[d] == 0) log << ' ' << d;
+        log << std::endl;
+      };
+      continue;
+    };
+
+    // sum time differences with respect to channel 0
+    for (size_t d = 1; d < times.size(); ++d)
+      offsets[d] += times[d] - times[0];
+    ++n;
+  };
+
+  if (n == 0)
+    throw std::runtime_error(
+        "Digitizer: failed to synchronize: "
+        "missing hits in synchronization channels"
+    );
+
+  // we want time offsets to be positive --- find the max time and use this
+  // board as the origin
+  int64_t max = 0;
+  for (int64_t  o : offsets) if (o > max) max = o;
+  for (int64_t& o : offsets) o = (max - o) / n; // average
+
+  // set digitizer_time_offset
+  for (size_t d = 0; d < offsets.size(); ++d)
+    m_data->digitizer_time_offset[d] = Time(static_cast<uint64_t>(offsets[d]));
+
+  if (m_verbose > 1) {
+    auto& log
+      = info()
+          << "Digitizer: synchronized with "
+          << n
+          << " pulses, offsets are:";
+    for (auto& o : m_data->digitizer_time_offset)
+      log << ' ' << o.bits();
+    log << " (";
+    for (auto& o : m_data->digitizer_time_offset)
+      log << ' ' << o.seconds();
+    log << " s)" << std::endl;
+  };
+
+  // adjust the time on hits read so far
+  for (auto& hits : data)
+    for (auto& hit : *hits)
+      hit.sync_time = hit.time + m_data->digitizer_time_offset[hit.channel >> 4];
+
+  // send the readout hits for further processing and storage
+  std::lock_guard<std::mutex> lock(m_data->raw_readout_mutex);
+  if (!m_data->raw_readout)
+    m_data->raw_readout.reset(
+        new std::list<std::unique_ptr<std::vector<Hit>>>(
+          std::move(data)
+        )
+    );
+  else
+    // should never happen actually
+    for (auto& hits : data)
+      m_data->raw_readout->emplace_back(std::move(hits));
+};
+
 // Read data from the board and put it into m_data.raw_readout
-void Digitizer::readout(Board& board) {
+std::unique_ptr<std::vector<Hit>>
+Digitizer::readout(Board& board, Time offset) {
   // board.digitizer.sendSWTrigger(); // FIXME: software trigger for testing
+
+  // flush // FIXME: for testing --- remove in operation
+  board.digitizer.writeRegister(0x8040, 1);
+
   board.digitizer.readData(CAEN_DGTZ_SLAVE_TERMINATED_READOUT_MBLT, board.buffer);
-  if (board.digitizer.getNumEvents(board.buffer) == 0) return;
+  if (board.digitizer.getNumEvents(board.buffer) == 0) return nullptr;
 
   board.digitizer.getEvents(board.buffer, board.events);
   uint32_t nhits = 0;
@@ -500,6 +613,7 @@ void Digitizer::readout(Board& board) {
          ++event)
     {
       hit->time         = Time(event->TimeTag, event->Extras);
+      hit->sync_time    = hit->time + offset;
       hit->charge_short = event->ChargeShort;
       hit->charge_long  = event->ChargeLong;
 #if 0
@@ -522,31 +636,64 @@ void Digitizer::readout(Board& board) {
     };
   };
 
-  std::lock_guard<std::mutex> lock(m_data->raw_readout_mutex);
-  if (!m_data->raw_readout)
-    m_data->raw_readout.reset(new std::list<std::unique_ptr<std::vector<Hit>>>());
-  m_data->raw_readout->push_back(std::move(hits));
-}
+  return hits;
+};
 
 void Digitizer::readout(const std::vector<Board*>& boards) {
   int active = 0;
   for (auto board : boards) if (board->active) ++active;
 
   while (acquiring && active > 0)
-    for (auto board : boards)
-      if (board->active)
+    for (size_t d = 0; d < boards.size(); ++d)
+      if (boards[d]->active)
         try {
-          readout(*board);
+          auto hits = readout(*boards[d], m_data->digitizer_time_offset[d]);
+          if (!hits) continue;
+          std::lock_guard<std::mutex> lock(m_data->raw_readout_mutex);
+          if (!m_data->raw_readout)
+            m_data->raw_readout.reset(
+                new std::list<std::unique_ptr<std::vector<Hit>>>()
+            );
+          m_data->raw_readout->push_back(std::move(hits));
         } catch (caen::Digitizer::Error& error) {
           this->error()
             << "digitizer "
-            << static_cast<int>(board->id)
+            << static_cast<int>(boards[d]->id)
             << ": "
             << error.what()
             << std::endl;
-          board->active = false;
+          boards[d]->active = false;
           --active;
         };
+};
+
+void Digitizer::pulse(int output, bool wide, uint8_t number) {
+  if (!bridge) return;
+  auto out = static_cast<CVOutputSelect>(output);
+
+  printf("sending pulse %d %d %hhu\n", output, wide, number);
+
+  bridge->setPulserConf(
+      cvPulserA,
+      {
+        .period  = 255,
+        .width   = static_cast<uint8_t>(wide ? 255 : 1),
+        .number  = number,
+        .start   = cvManualSW,
+        .reset   = cvManualSW
+      }
+  );
+
+  caen::Bridge::OutputConf conf {
+    .polarity     = cvDirect,
+    .led_polarity = cvActiveHigh,
+    .source       = cvMiscSignals
+  };
+  bridge->setOutputConf(out, conf);
+  bridge->startPulser(cvPulserA);
+  usleep(100);
+  conf.source = cvManualSW;
+  bridge->setOutputConf(out, conf);
 };
 
 bool Digitizer::Initialise(std::string configfile, DataModel &data) {
