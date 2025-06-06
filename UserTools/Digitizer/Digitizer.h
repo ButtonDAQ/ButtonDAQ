@@ -11,10 +11,11 @@
 #include <caen++/vme.hpp>
 
 #include "Tool.h"
+#include "HandleList.h"
 
 class Digitizer: public ToolFramework::Tool {
   public:
-    ~Digitizer() { Finalise(); }
+    ~Digitizer() { Finalise(); };
 
     bool Initialise(std::string configfile, DataModel&);
     bool Execute();
@@ -70,6 +71,8 @@ class Digitizer: public ToolFramework::Tool {
     std::vector<ReadoutThread> readout_threads;
 
     std::unique_ptr<Monitor> monitor;
+
+    HandleList<std::function<void ()>>::Handle terminator;
 
     void connect();
     void disconnect();

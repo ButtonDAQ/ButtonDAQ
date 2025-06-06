@@ -710,10 +710,14 @@ void Digitizer::pulse(int output, bool wide, uint8_t number) {
 };
 
 bool Digitizer::Initialise(std::string configfile, DataModel &data) {
+  if (terminator) terminator.erase();
+
   InitialiseTool(data);
   InitialiseConfiguration(configfile);
 
   if (!m_variables.Get("verbose", m_verbose)) m_verbose = 1;
+
+  terminator = m_data->terminators.add([this]() { Finalise(); });
 
   connect();
 
@@ -746,6 +750,8 @@ bool Digitizer::Finalise() {
 
   if (acquiring) stop_acquisition();
   disconnect();
+
+  if (terminator) terminator.erase();
 
   return true;
 }

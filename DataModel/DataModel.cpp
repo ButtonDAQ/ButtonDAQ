@@ -62,3 +62,12 @@ uint32_t VMELinks::hvoltage() {
     throw std::runtime_error("Cannot find the high voltage VME crate");
   return m_hvoltage;
 };
+
+void DataModel::terminate() {
+  auto next = terminators.begin();
+  while (next != terminators.end()) {
+    auto terminate = next++;
+    // this call may erase the current iterator, so we need to compute the next in advance
+    (*terminate)();
+  };
+};

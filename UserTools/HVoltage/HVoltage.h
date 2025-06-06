@@ -9,6 +9,7 @@
 
 #include "Tool.h"
 #include "Services.h"
+#include "HandleList.h"
 
 class HVoltage: public ToolFramework::Tool {
   public:
@@ -71,6 +72,8 @@ class HVoltage: public ToolFramework::Tool {
 
     std::vector<caen::V6534> boards;
     std::vector<ToolFramework::SlowControlElement*> controls;
+
+    HandleList<std::function<void ()>>::Handle terminator;
 
     ToolFramework::Logging& log(int level) {
       return *m_log << ToolFramework::MsgL(level, m_verbose);

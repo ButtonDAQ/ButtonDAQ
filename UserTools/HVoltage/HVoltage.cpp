@@ -281,8 +281,12 @@ void HVoltage::Monitor::monitor() {
 };
 
 bool HVoltage::Initialise(std::string configfile, DataModel& data) {
+  if (terminator) terminator.erase();
+
   InitialiseTool(data);
   InitialiseConfiguration(configfile);
+
+  terminator = m_data->terminators.add([this]() { Finalise(); });
 
   if (!m_variables.Get("verbose", m_verbose)) m_verbose = 1;
 
@@ -325,5 +329,8 @@ bool HVoltage::Execute() {
 bool HVoltage::Finalise() {
   if (monitor) delete monitor.release();
   disconnect();
+
+  if (terminator) terminator.erase();
+
   return true;
 };

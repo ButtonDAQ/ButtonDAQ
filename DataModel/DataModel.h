@@ -15,6 +15,7 @@
 #include "DAQUtilities.h"
 #include "TimeSlice.h"
 
+#include "HandleList.h"
 
 #include <zmq.hpp>
 
@@ -110,7 +111,14 @@ class DataModel : public DAQDataModelBase {
   std::vector<Time>   digitizer_time_offset;
 
   VMELinks vme_links;
+
+  // These functions will be called from std::terminate or from signal handlers
+  // for signals SIGINT, SIGTERM. The program will not continue execution after
+  // the calls. The inention is to gracefully shutdown all of the subsystems.
+  // Caveats of `std::terminate` and `signal` apply.
+  HandleList<std::function<void ()>> terminators;
   
+  void terminate();
 
 private:
 
