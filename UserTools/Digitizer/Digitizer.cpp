@@ -555,7 +555,6 @@ bool Digitizer::Initialise(std::string configfile, DataModel &data) {
   if (!m_variables.Get("verbose", m_verbose)) m_verbose = 1;
 
   connect();
-  configure();
 
   ExportConfiguration();
   return true;
@@ -571,10 +570,6 @@ bool Digitizer::Execute() {
     InitialiseConfiguration();
     if (!m_variables.Get("verbose", m_verbose)) m_verbose = 1;
 
-
-    disconnect();
-
-    connect();
     configure();
 
     if (acq) start_acquisition();
