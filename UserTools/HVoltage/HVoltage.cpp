@@ -319,16 +319,6 @@ bool HVoltage::Initialise(std::string configfile, DataModel& data) {
 };
 
 bool HVoltage::Execute() {
-  if (m_data->change_config) {
-    disconnect();
-    InitialiseConfiguration();
-    if (!m_variables.Get("verbose", m_verbose)) m_verbose = 1;
-    connect();
-    configure();
-  };
-
-  std::this_thread::sleep_for(std::chrono::milliseconds(500));
-
   return true;
 };
 
