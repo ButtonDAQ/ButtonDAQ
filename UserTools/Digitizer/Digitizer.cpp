@@ -241,7 +241,7 @@ void Digitizer::disconnect() {
 void Digitizer::configure() {
   CAEN_DGTZ_DPP_PSD_Params_t params;
   params.trgho    = 0;
-  params.thr[0]   = 20;
+  int trigger_threshold = 20;
   params.selft[0] = 1;
   params.csens[0] = 0;
   params.sgate[0] = 50;
@@ -261,7 +261,7 @@ void Digitizer::configure() {
   params.purgap   = 100;
 
   m_variables.Get("trigger_hold_off",    params.trgho);
-  m_variables.Get("trigger_threshold",   params.thr[0]);
+  m_variables.Get("trigger_threshold",   trigger_threshold);
   m_variables.Get("self_trigger",        params.selft[0]);
   m_variables.Get("short_gate",          params.sgate[0]);
   m_variables.Get("long_gate",           params.lgate[0]);
@@ -272,6 +272,7 @@ void Digitizer::configure() {
   m_variables.Get("CFD_fraction",        params.cfdf[0]);
   m_variables.Get("CFD_delay",           params.cfdd[0]);
 
+  params.thr[0] = trigger_threshold;
   for (int i = 1; i < MAX_DPP_PSD_CHANNEL_SIZE; ++i) {
     params.thr[i]   = params.thr[0];
     params.selft[i] = params.selft[0];
@@ -310,6 +311,8 @@ void Digitizer::configure() {
 
   m_data->enabled_digitizer_channels.resize(digitizers.size());
 
+  std::vector<uint16_t> thresholds;
+  std::stringstream ss;
   std::string string;
   int i = 0;
   for (auto& board : digitizers) {
@@ -317,7 +320,6 @@ void Digitizer::configure() {
 
     auto& digitizer = board.digitizer;
 
-    std::stringstream ss;
     ss << "digitizer_" << i << "_channels";
     uint16_t channels = 0xFFFF;
     if (m_variables.Get(ss.str(), string)) {
@@ -349,6 +351,17 @@ void Digitizer::configure() {
           digitizer.setRecordLength(channel, nsamples);
 
     digitizer.setDPPEventAggregation();
+
+    {
+      ss.str({});
+      ss << "digitizer_" << i << "_trigger_thresholds";
+      size_t i = 0;
+      if (m_variables.Get(ss.str(), thresholds))
+        for (i = 0; i < thresholds.size() && i < MAX_DPP_PSD_CHANNEL_SIZE; ++i)
+          params.thr[i] = thresholds[i];
+      for (; i < MAX_DPP_PSD_CHANNEL_SIZE; ++i)
+        params.thr[i] = trigger_threshold;
+    };
 
     digitizer.setDPPParameters(channels, params);
 
