@@ -51,6 +51,7 @@ class Reformatter: public ToolFramework::Tool {
     void stop_reformatting();
 
     void send_timeslice(Time time, std::vector<Hit>& hits);
+    void slice_timeslice(Time start, Time end);
     void reformat();
 };
 

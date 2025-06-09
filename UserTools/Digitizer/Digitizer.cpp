@@ -444,6 +444,9 @@ void Digitizer::configure() {
 }
 
 void Digitizer::start_acquisition() {
+  for (auto& board : digitizers)
+    board.digitizer.clearData();
+
   acquiring = true;
   for (auto& board : digitizers) {
     info()
