@@ -31,13 +31,13 @@ struct Monitoring_args:Thread_args{
   boost::posix_time::time_duration lapse2;
   boost::posix_time::ptime last2;
   // Store hit_rates;
-  DataModel* data;
+  DataModel* data = 0;
 
-  std::queue<std::unique_ptr<TimeSlice>>* monitoring_readout;
-  std::mutex* monitoring_readout_mutex;
+  //  std::queue<std::unique_ptr<TimeSlice>>* monitoring_readout;
+  //std::mutex* monitoring_readout_mutex;
   std::queue<std::unique_ptr<TimeSlice>> in_progress;
   std::unique_ptr<TimeSlice> time_slice;
-  zmq::socket_t* sock;
+  zmq::socket_t* sock = 0;
   
 };
 

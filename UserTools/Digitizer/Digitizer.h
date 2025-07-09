@@ -97,7 +97,7 @@ class Digitizer: public ToolFramework::Tool {
     std::unique_ptr<std::vector<Hit>> readout(Board&, Time offset);
     void readout(const std::vector<Board*>&);
 
-    void pulse(int output, bool wide, uint8_t number);
+    void pulse(int output, uint8_t number);
 
     ToolFramework::Logging& log(int level) {
       return *m_log << ToolFramework::MsgL(level, m_verbose);

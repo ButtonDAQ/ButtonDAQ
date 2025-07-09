@@ -47,7 +47,7 @@ bool FileWriter::Execute(){
 
   if(m_data->change_config){
     InitialiseConfiguration(m_configfile); // surely add load config here   need to do return checks.
-    
+    LoadConfig();
     ExportConfiguration();
   }
   if(m_data->run_start) LoadConfig();   ///?   oh maybe to ensure file file written before load config happends but this is a crap way of doing it please change Ben
@@ -87,7 +87,8 @@ void FileWriter::Thread(Thread_args* arg){
   //}
   
   args->last= boost::posix_time::microsec_clock::universal_time();
-  
+  /*
+  //////////// writing out triggered but no window built data
   args->data->triggered_readout_mutex.lock();
 
   if(args->data->triggered_readout.size()==0){
@@ -95,12 +96,30 @@ void FileWriter::Thread(Thread_args* arg){
     return;
   }
 
-  printf("writing out data\n");
 
   std::queue<std::unique_ptr<TimeSlice>> local_readout;
 
   std::swap(args->data->triggered_readout, local_readout);
   args->data->triggered_readout_mutex.unlock();
+  ////////////////////////////////////////////////////////
+
+  */
+    //////////// writing out window built data
+  args->data->final_readout_mutex.lock();
+
+  if(args->data->final_readout.size()==0){
+    args->data->final_readout_mutex.unlock();
+    return;
+  }
+  printf("writing out data\n");
+  
+
+  //  std::queue<std::unique_ptr<TimeSlice>> local_readout;
+
+  std::swap(args->data->final_readout, args->local_readout);
+  args->data->final_readout_mutex.unlock();
+  /////////////////////////////////////////////////
+  
   /*
   std::queue<std::unique_ptr<TimeSlice>> local_trimmed_readout;
 
@@ -114,30 +133,34 @@ void FileWriter::Thread(Thread_args* arg){
   }
   */
   std::stringstream filename;
-  filename<<(*args->file_name)<<"R"<<args->data->run_number<<"S"<<args->data->sub_run_number<<"P"<<(*args->part_number)<<".dat";
+  filename<<(*args->file_name)<<"R"<<args->data->run_number;
+  std::string folder="mkdir -p " + filename.str();
+  system(folder.c_str());
+  filename<<"/R"<<args->data->run_number<<"S"<<args->data->sub_run_number<<"P"<<(*args->part_number)<<".dat";
+  
   BinaryStream output;
   output.Bopen(filename.str().c_str(), NEW, UNCOMPRESSED);
 
 
   //  unsigned long size=local_trimmed_readout.size();
-  unsigned long size=local_readout.size();
+  unsigned long size=args->local_readout.size();
   output<<size;
   
   unsigned int mod=1;  
   if(size>(*args->file_writeout_period)) mod=size/(*(args->file_writeout_period));
   
-  for(unsigned int i=0; i< size; i++){
+  for(unsigned long i=0; i< size; i++){
     //    output<<local_trimmed_readout.front();
     //    local_trimmed_readout.pop();
-    output<<*local_readout.front();
+    output<<*(args->local_readout.front());
     
     if(!(i%mod)){
       args->data->monitoring_readout_mutex.lock();
-      args->data->monitoring_readout.emplace(std::move(local_readout.front()));
+      args->data->monitoring_readout.emplace(std::move(args->local_readout.front()));
       args->data->monitoring_readout_mutex.unlock();
     }
 
-    local_readout.pop();
+    args->local_readout.pop();
   }
   
   output.Bclose();

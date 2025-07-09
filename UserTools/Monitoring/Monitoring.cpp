@@ -39,8 +39,8 @@ bool Monitoring::Initialise(std::string configfile, DataModel &data){
   args->data = m_data;
   args->last2 =  boost::posix_time::microsec_clock::universal_time();
   args->period2 =  boost::posix_time::seconds(1);
-  args->monitoring_readout_mutex = &(m_data->monitoring_readout_mutex);
-  args->monitoring_readout = &(m_data->monitoring_readout);
+  //args->monitoring_readout_mutex = &(m_data->monitoring_readout_mutex);
+  //args->monitoring_readout = &(m_data->monitoring_readout);
   args->sock = new zmq::socket_t(*(m_data->context), ZMQ_PUB);
   args->sock->bind("tcp://*:5656");
   
@@ -114,7 +114,9 @@ bool Monitoring::Execute(){
     cpu /= total;
     cpu *= 100;
   }
-  
+
+  if(cpu != cpu) cpu =0;
+  if( mem != mem) mem=0;
   lastTotalUser = totalUser;
   lastTotalUserLow = totalUserLow;
   lastTotalSys = totalSys;
@@ -181,32 +183,36 @@ void Monitoring::Thread(Thread_args* arg){
   */
   
   args->lapse = args->period -( boost::posix_time::microsec_clock::universal_time() - args->last);
-  //std::cout<< m_lapse<<std::endl;
+  //  std::cout<< args->lapse<<std::endl;
   
   if(!args->lapse.is_negative() ){
     usleep(100);
     return;
   }
-    //printf("in runstart lapse\n");
+  //  printf("in runstart lapse\n");
     
-    std::string json="";
+  std::string json="", json2="";
     Store tmp;
-    for(unsigned int i=0; i<args->data->channel_hits.size(); i++){
+    for(size_t i=0; i<args->data->channel_hits.size(); i++){
 
-      tmp.Set(std::to_string(i),(unsigned int)args->data->channel_hits.at(i));
+      tmp.Set(std::to_string(i),(unsigned long)args->data->channel_hits.at(i));
 
     }
 
     tmp>>json;
 
     args->data->monitoring_store_mtx.lock();
-    args->data->monitoring_store>>json;
+    //    args->data->monitoring_store.Set("HitSum",json);
+    args->data->monitoring_store>>json2;
     args->data->monitoring_store_mtx.unlock();
-    args->data->services->SendMonitoringData(json);
+    args->data->services->SendMonitoringData(json, "hit_sum");
+    args->data->services->SendMonitoringData(json2);
 
-    args->monitoring_readout_mutex->lock();
-    if(args->monitoring_readout->size()) std::swap(*args->monitoring_readout, args->in_progress);
-    args->monitoring_readout_mutex->unlock();
+    //    printf("json=%s, json2=%s\n", json.c_str(), json2.c_str());
+
+    args->data->monitoring_readout_mutex.lock();
+    if(args->data->monitoring_readout.size()) std::swap(args->data->monitoring_readout, args->in_progress);
+    args->data->monitoring_readout_mutex.unlock();
 
     for( size_t i=0; i <args->in_progress.size(); i++){
       args->in_progress.front()->Send(args->sock);

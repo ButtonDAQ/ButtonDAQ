@@ -1,0 +1,87 @@
+#!/bin/bash
+
+usage() {
+  echo 'This program resets CAEN Conet USB adaptors by power cycling their ports.'
+  echo "Usage: $0 [options]"
+  echo 'Allowed options:'
+  echo '  -d or --daemon:      same as -l and fork to background'
+  echo '  -l or --listen:      listen for a command on the given port'
+  echo '  -p or --port <port>: port number to use with the -d option'
+  echo '  -h or --help:        print this message and exit'
+  echo '  -q or --quiet:       do not log actions'
+}
+
+log() {
+  if ((!quiet)); then
+    echo "$@"
+  fi
+}
+
+reset() {
+  local -a ports=()
+  local dev port
+
+  for dev in `find /sys/bus/usb/devices/usb*/ -name manufacturer`; do
+    if [[ "`< $dev`" = 'CAEN SpA' ]]; then
+      ports+=("`readlink -f ${dev%/manufacturer}/port`")
+    fi
+  done
+
+  for port in "${ports[@]}"; do
+    log "Disabling port ${port%%*/}"
+    echo 1 > $port/disable
+  done
+
+  log 'Sleeping for 1 second'
+  sleep 1
+
+  for port in "${ports[@]}"; do
+    log "Enabling port ${port%%*/}"
+    echo 0 > $port/disable
+  done
+}
+
+serve() {
+  while :; do
+    coproc nc { exec nc -lp "$port"; }
+    read cmd <&${nc[0]}
+    case "$cmd" in
+      exit)
+        break
+      ;;
+      reset)
+        reset >&${nc[1]} 2>&1
+        exec {nc[1]}>&-
+      ;;
+    esac
+    wait $nc_PID
+  done
+}
+
+if [[ $UID != 0 ]]; then
+  exec sudo "$0" "$@"
+fi
+
+port=6666
+daemon=0
+quiet=0
+argv=$(command getopt -o dhlp:q -l daemon,listen,help,port:,quiet -- "$@") || exit $?
+eval "set -- $argv"
+while [[ $1 != -- ]]; do
+  case $1 in
+    -d|--daemon) daemon=1; shift;;
+    -l|--listen) listen=1; shift;;
+    -h|--help)   usage;    exit;;
+    -p|--port)   port=$2;  shift 2;;
+    -q|--quiet)  quiet=1;  shift;;
+  esac
+done
+
+if ((daemon)); then
+  serve &
+  disown
+elif ((listen)); then
+  serve
+else
+  reset
+fi

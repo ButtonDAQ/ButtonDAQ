@@ -25,21 +25,23 @@ struct Trigger_args:Thread_args{
 
   Trigger_args();
   ~Trigger_args();
-  DataModel* m_data;
-  std::queue<std::unique_ptr<TimeSlice>>* sorted_readout;
-  std::mutex* sorted_readout_mutex;
-  std::queue<std::unique_ptr<TimeSlice>>* triggered_readout;
-  std::mutex* triggered_readout_mutex;
+  DataModel* m_data = 0;
+  //std::queue<std::unique_ptr<TimeSlice>>* sorted_readout;
+  //std::mutex* sorted_readout_mutex;
+  //std::queue<std::unique_ptr<TimeSlice>>* triggered_readout;
+  //std::mutex* triggered_readout_mutex;
   std::queue<std::unique_ptr<TimeSlice>> in_progress;
   std::unique_ptr<TimeSlice> time_slice;
-  std::map<uint8_t, TriggerType>* trigger_channels;
-  unsigned int* threashold;
-  unsigned int* window_size;
-  unsigned int* jump;
-  float* zero_rate;
-  short* count;
-  bool* nhits;
-  
+  std::map<uint8_t, TriggerType>* trigger_channels = 0;
+  unsigned int* threashold = 0;
+  unsigned int* window_size = 0;
+  unsigned int* jump = 0;
+  float* zero_rate = 0;
+  short* count = 0;
+  bool* nhits = 0;
+  Pool<Job> job_pool;
+  Job* tmp_job = 0;
+  Trigger_args* tmp_args = 0;
 };
 
 /**
@@ -73,8 +75,8 @@ class Trigger: public Tool {
   int m_freethreads; ///< Keeps track of free threads
   unsigned long m_threadnum; ///< Counter for unique naming of threads
 
-  static bool TriggerData(void* data);
-  static void FailTrigger(void* data);
+  static bool TriggerData(void*& data);
+  static void FailTrigger(void*& data);
 
   std::map<uint8_t, TriggerType> trigger_channels;
   unsigned int threashold;

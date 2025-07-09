@@ -33,17 +33,24 @@ struct WindowBuilder_args:Thread_args{
   WindowBuilder_args();
   ~WindowBuilder_args();
   DataModel* m_data;
-  std::queue<std::unique_ptr<TimeSlice>>* triggered_readout;
-  std::mutex* triggered_readout_mutex;
-  std::queue<std::unique_ptr<TimeSlice>>* final_readout;
-  std::mutex* final_readout_mutex;
+  // std::queue<std::unique_ptr<TimeSlice>>* triggered_readout;
+  //std::mutex* triggered_readout_mutex;
+  //std::queue<std::unique_ptr<TimeSlice>>* final_readout;
+  //std::mutex* final_readout_mutex;
   std::queue<std::unique_ptr<TimeSlice>> in_progress;
   std::unique_ptr<TimeSlice> time_slice;
-  std::map<TriggerType, unsigned long>* trigger_offset;
-  std::map<TriggerType, unsigned long>* pre_trigger;
-  std::map<TriggerType, unsigned long>* post_trigger;
-  
-  
+  std::map<TriggerType, unsigned long>* trigger_offset = 0;
+  std::map<TriggerType, unsigned long>* pre_trigger = 0;
+  std::map<TriggerType, unsigned long>* post_trigger = 0;
+  Pool<Job> job_pool;
+  Job* tmp_job = 0;
+  WindowBuilder_args* tmp_args = 0;
+  std::vector<TriggerGroup> trigger_groups;
+  std::map<unsigned short, bool> veto;
+  std::vector<TimeSlice*> time_slices;
+  bool skip=false;
+  std::vector<Hit>::iterator min_it;
+  std::vector<Hit>::iterator max_it;
 };
 
 /**
@@ -80,8 +87,8 @@ class WindowBuilder: public Tool {
   int m_freethreads; ///< Keeps track of free threads
   unsigned long m_threadnum; ///< Counter for unique naming of threads
 
-  static bool SelectData(void* data);
-  static void FailSelect(void* data);
+  static bool SelectData(void*& data);
+  static void FailSelect(void*& data);
 
   std::map<TriggerType, unsigned long> trigger_offset;
   std::map<TriggerType, unsigned long> pre_trigger;

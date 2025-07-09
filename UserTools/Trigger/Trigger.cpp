@@ -2,7 +2,11 @@
 
 Trigger_args::Trigger_args():Thread_args(){}
 
-Trigger_args::~Trigger_args(){}
+Trigger_args::~Trigger_args(){
+  delete[] count;
+  count = 0;
+  
+}
 
 
 Trigger::Trigger():Tool(){}
@@ -47,10 +51,12 @@ bool Trigger::Execute(){
       }
     }
     if(!m_variables.Get("zero_rate",zero_rate)) zero_rate=0.0;  
-
+    //nhits=true;
+    
     ExportConfiguration();
   }
-  
+
+  //  std::cout<<"nhits="<<nhits<<std::endl;
   return true;
 }
 
@@ -71,10 +77,10 @@ void Trigger::CreateThread(){
 
   Trigger_args* tmp_args=new Trigger_args();
   tmp_args->m_data = m_data;
-  tmp_args->sorted_readout = &(m_data->sorted_readout);
-  tmp_args->sorted_readout_mutex = &(m_data->sorted_readout_mutex);
-  tmp_args->triggered_readout = &(m_data->triggered_readout);
-  tmp_args->triggered_readout_mutex = &(m_data->triggered_readout_mutex);
+  //tmp_args->sorted_readout = &(m_data->sorted_readout);
+  //tmp_args->sorted_readout_mutex = &(m_data->sorted_readout_mutex);
+  //tmp_args->triggered_readout = &(m_data->triggered_readout);
+  //tmp_args->triggered_readout_mutex = &(m_data->triggered_readout_mutex);
   tmp_args->trigger_channels = &trigger_channels;
   tmp_args->zero_rate = &zero_rate;
   tmp_args->threashold = &threashold;
@@ -105,37 +111,44 @@ void Trigger::Thread(Thread_args* arg){
 
   Trigger_args* args=reinterpret_cast<Trigger_args*>(arg);
 
-  args->sorted_readout_mutex->lock();
-  if(!args->sorted_readout->size()){
-    args->sorted_readout_mutex->unlock();
+  args->m_data->sorted_readout_mutex.lock();
+  if(!args->m_data->sorted_readout.size()){
+    args->m_data->sorted_readout_mutex.unlock();
     usleep(100);
     return;
   }
   //  printf("l1\n");  
-  std::swap(*args->sorted_readout, args->in_progress);
-  args->sorted_readout_mutex->unlock();
+  std::swap(args->m_data->sorted_readout, args->in_progress);
+  args->m_data->sorted_readout_mutex.unlock();
   // printf("l2\n");  
   
-  for(unsigned int i=0; i<args->in_progress.size(); i++){
+  for(size_t i=0; i<args->in_progress.size(); i++){
     // printf("l3\n");  
     
-    Job* tmp_job= new Job("triggering");
-    Trigger_args* tmp_args = new Trigger_args;
-    tmp_args->m_data=args->m_data;
-    tmp_args->time_slice =  std::move(args->in_progress.front());
+    //    Job* tmp_job= new Job("triggering");
+    args->tmp_job = args->job_pool.GetNew("triggering");
+    if(args->tmp_job->data ==0){
+      args->tmp_args =  new Trigger_args;
+    //    Trigger_args* tmp_args = new Trigger_args;
+    args->tmp_args->m_data=args->m_data;
+    args->tmp_job->data=args->tmp_args;
+    }
+    else args->tmp_args = reinterpret_cast<Trigger_args*>(args->tmp_job->data);
+    
+    args->tmp_args->time_slice =  std::move(args->in_progress.front());
     args->in_progress.pop();
-    tmp_args->triggered_readout = args->triggered_readout;
-    tmp_args->triggered_readout_mutex = args->triggered_readout_mutex;
-    tmp_args->trigger_channels = args->trigger_channels;
-    tmp_args->zero_rate = args->zero_rate;
-    tmp_args->threashold = args->threashold;
-    tmp_args->window_size = args->window_size;
-    tmp_args->jump = args->jump;
-    tmp_args->nhits = args->nhits;
-    tmp_job->data=tmp_args;
-    tmp_job->func=TriggerData;
-    tmp_job->fail_func=FailTrigger;
-    if(!args->m_data->job_queue.AddJob(tmp_job)) printf("ERROR!!!\n");
+    //  tmp_args->triggered_readout = args->triggered_readout;
+    //tmp_args->triggered_readout_mutex = args->triggered_readout_mutex;
+    args->tmp_args->trigger_channels = args->trigger_channels;
+    args->tmp_args->zero_rate = args->zero_rate;
+    args->tmp_args->threashold = args->threashold;
+    args->tmp_args->window_size = args->window_size;
+    args->tmp_args->jump = args->jump;
+    args->tmp_args->nhits = args->nhits;
+    args->tmp_job->func=TriggerData;
+    args->tmp_job->fail_func=FailTrigger;
+    args->tmp_job->out_pool= &args->job_pool;
+    if(!args->m_data->job_queue.AddJob(args->tmp_job)) printf("ERROR!!!\n");
     // printf("l4\n");  
     
   }
@@ -146,7 +159,7 @@ void Trigger::Thread(Thread_args* arg){
 }
 
 
-bool Trigger::TriggerData(void* data){
+bool Trigger::TriggerData(void*& data){
 
   //printf("d1\n");
   Trigger_args* args=reinterpret_cast<Trigger_args*>(data);
@@ -157,9 +170,12 @@ bool Trigger::TriggerData(void* data){
   //time??
  //printf("d2\n");
   
-  if(args->nhits) args->count = new short[100000000];
+  if(*args->nhits){
+    if(args->count == 0) args->count = new short[100000000];
+    memset(args->count, 0, 100000000*sizeof(*args->count));
+  }
  //printf("d3\n");
-  for(unsigned int i=0; i <args->time_slice->hits.size(); i++){
+  for(size_t i=0; i <args->time_slice->hits.size(); i++){
 
     if(args->trigger_channels->count(args->time_slice->hits.at(i).channel)) args->time_slice->triggers.emplace(args->time_slice->triggers.end(), (*args->trigger_channels)[args->time_slice->hits.at(i).channel], args->time_slice->hits.at(i).sync_time); // calib triggers
     else{
@@ -168,27 +184,25 @@ bool Trigger::TriggerData(void* data){
       //printf("c=%lu\n",(args->time_slice->hits.at(i).time.bits() - args->time_slice->time.bits())>>9);
       //printf("channel = %u\n", args->time_slice->hits[i].channel);
       
-      if(args->nhits) args->count[(args->time_slice->hits.at(i).sync_time.bits() - args->time_slice->time.bits())>>9]++;
+      if(*args->nhits) args->count[(args->time_slice->hits.at(i).sync_time.bits() - args->time_slice->time.bits())>>9]++;
     }
   }
   //printf("d4\n");
   
-  if(args->nhits){
-    for(unsigned int i=1; i<100000000; i++){
+  if(*args->nhits){
+    for(size_t i=1; i<100000000; i++){
       args->count[i]+=args->count[i-1];
     }
-    //printf("d5\n");
+    printf("d5\n");
     
     //nhits
-    for(unsigned int i= (*args->window_size)+1; i<100000000-(*args->window_size); i++){
+    for(size_t i= (*args->window_size)+1; i<100000000-(*args->window_size); i++){
       if(args->count[i]-args->count[i-(*args->window_size)] >= (*args->threashold)){
 	args->time_slice->triggers.emplace(args->time_slice->triggers.end(), TriggerType::nhits, (i-(*args->window_size) <<9) + args->time_slice->time.bits());
 	i+=(*args->jump);
       }
     }
-    
-    delete[] args->count;
-    args->count=0;
+
   }
   
   // zero bais
@@ -202,16 +216,16 @@ bool Trigger::TriggerData(void* data){
  //printf("d6\n");
 
   ////
-   args->triggered_readout_mutex->lock();
-   args->triggered_readout->emplace(std::move(args->time_slice)); //Ben this is bad and will lead to an unsorted queue dont use a queue;
-   args->triggered_readout_mutex->unlock(); 
+   args->m_data->triggered_readout_mutex.lock();
+   args->m_data->triggered_readout.emplace(std::move(args->time_slice)); //Ben this is bad and will lead to an unsorted queue dont use a queue;
+   args->m_data->triggered_readout_mutex.unlock(); 
    //printf("d7\n");
    
-   delete[] args->count;
-   args->count=0;
-   delete args;
-   args=0;
-   data=0;
+   //  delete[] args->count;
+   //args->count=0;
+   //delete args;
+   //args=0;
+   //data=0;
    
    
   //printf("d8\n");
@@ -219,12 +233,12 @@ bool Trigger::TriggerData(void* data){
   return true;
 }
 
-void Trigger::FailTrigger(void* data){
+void Trigger::FailTrigger(void*& data){
   // printf("e1\n");
-  Trigger_args* args=reinterpret_cast<Trigger_args*>(data);
-  delete args;
-  args=0;
-  data=0;
+  //Trigger_args* args=reinterpret_cast<Trigger_args*>(data);
+  //delete args;
+  //args=0;
+  //data=0;
   // printf("e2\n");
   
 }

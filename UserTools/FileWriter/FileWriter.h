@@ -20,14 +20,14 @@ struct FileWriter_args:Thread_args{
 
   FileWriter_args();
   ~FileWriter_args();
-  DataModel* data;
-  std::string* file_name;
-  unsigned long* part_number;
+  DataModel* data = 0;
+  std::string* file_name = 0;
+  unsigned long* part_number = 0;
   boost::posix_time::ptime last;
   boost::posix_time::time_duration period;
   boost::posix_time::time_duration lapse;
-  unsigned int* file_writeout_period;
-
+  unsigned int* file_writeout_period = 0;
+  std::queue<std::unique_ptr<TimeSlice>> local_readout;
 
 };
 

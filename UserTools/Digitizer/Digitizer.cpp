@@ -377,8 +377,11 @@ void Digitizer::configure() {
     // enable automatic buffer flush (1) and the extras word with extended and
     // fine timestamps (17)
     digitizer.writeRegister(0x8004, 1 | 1 << 17);
-    // enable the fine timestamp
-    digitizer.writeRegister(0x8084, 0b10 << 8);
+    digitizer.writeRegister(
+        0x8084,
+        0b111        // enable channels self-triggering
+        | 0b10 << 8  // enable fine timestamp
+    );
     // disable propagation of software trigger to TRG-OUT
     digitizer.writeRegister(0x8110, 0);
 
@@ -457,7 +460,7 @@ void Digitizer::start_acquisition() {
     board.active = true;
   };
 
-  pulse(0, true, 1);
+  pulse(0, 1);
 
   usleep(100);
   synchronize();
@@ -505,7 +508,7 @@ void Digitizer::synchronize() {
   std::list<std::unique_ptr<std::vector<Hit>>> data;
   for (int p = 0; p < npulses; ++p) {
     // send a pulse
-    pulse(1, false, 1);
+    pulse(1, 1);
 
     // get hit times in sync channels and store them in times
     int missing_hits = 0;
@@ -621,6 +624,15 @@ Digitizer::readout(Board& board, Time offset) {
        ++channel)
     nhits += board.events.nevents(channel);
 
+  //  if (m_verbose > 4) {
+    printf("readout %hhu:", board.id);
+    for (uint32_t channel = 0;
+        channel < board.digitizer.info().Channels;
+        ++channel)
+      printf(" %5u", board.events.nevents(channel));
+    putchar('\n');
+    //};
+
   std::unique_ptr<std::vector<Hit>> hits(new std::vector<Hit>(nhits));
   auto hit = hits->begin();
   for (uint32_t channel = 0;
@@ -687,17 +699,17 @@ void Digitizer::readout(const std::vector<Board*>& boards) {
         };
 };
 
-void Digitizer::pulse(int output, bool wide, uint8_t number) {
+void Digitizer::pulse(int output, uint8_t number) {
   if (!bridge) return;
   auto out = static_cast<CVOutputSelect>(output);
 
-  printf("sending pulse %d %d %hhu\n", output, wide, number);
+  printf("sending pulse %d %hhu\n", output, number);
 
   bridge->setPulserConf(
       cvPulserA,
       {
-        .period  = 255,
-        .width   = static_cast<uint8_t>(wide ? 255 : 1),
+        .period  = 254,
+        .width   = 1,
         .number  = number,
         .start   = cvManualSW,
         .reset   = cvManualSW

@@ -3,11 +3,11 @@
 Configuration Configuration Null
 RunControl RunControl Null
 JobManager JobManager Null
-Digitizer Digitizer Null
+Digitizer Digitizer configfiles/digitizer/digitizer.cfg
 Reformatter Reformatter Null
 Sorter Sorter Null
 Trigger Trigger Null
-#WindowBuilder WindowBuilder Null
+WindowBuilder WindowBuilder Null
 FileWriter FileWriter Null
 Monitoring Monitoring Null
-HVoltage HVoltage Null
+HVoltage HVoltage configfiles/Button/hvoltage.cfg

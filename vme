@@ -1,0 +1,89 @@
+#!/bin/bash
+
+digitizers=192.168.10.32
+hvoltage=192.168.10.31
+
+usage() {
+  echo 'This program talks to the VME crates via Telnet protocol'
+  echo "Usage: $0 {-d|-h|-i <addr>} [<command>]"
+  echo "Allowed commands:"
+  echo "  <no command>: reports crate status"
+  echo "  on:  powers up the crate"
+  echo "  off: powers down the crate"
+  echo "Allowed options:"
+  echo "  -d: the digitizers crate ($digitizers)"
+  echo "  -h: the high voltage crate ($hvoltage)"
+  echo "  -i <addr>: connect to this address"
+}
+
+send() {
+  local fd
+  exec {fd}<>"/dev/tcp/$1/8100" || exit $?
+  echo "$2" >&$fd
+  head -n 1 <&$fd
+  exec {fd}>&-
+}
+
+status() {
+  local status
+  status=$(send "$1" '$CMD:MON,CH:8,PAR:CRST') || exit $?
+  if ! [[ $status =~ ^#CMD:OK,VAL:([0-9]+)$'\r'$ ]]; then
+    echo "$0: unexpected reply from the crate: $status"
+    exit 1
+  fi
+  echo -n 'Power: '
+  if ((${BASH_REMATCH[1]} & 1)); then
+    echo on
+  else
+    echo off
+  fi
+}
+
+power() {
+  local status
+  status=$(send "$1" "\$CMD:SET,CH:8,PAR:$2") || exit $?
+  if ! [[ $status =~ ^#CMD:OK$'\r'$ ]]; then
+    echo "$0: unexpected reply from the crate: $status"
+    exit 1
+  fi
+}
+
+ip=
+
+argv=`getopt -o dhi: -l help -- "$@"` || exit $?
+eval "set -- $argv"
+while [[ $1 != -- ]]; do
+  case $1 in
+    --help) usage; exit;;
+    -h) ip=$hvoltage; shift;;
+    -d) ip=$digitizers; shift;;
+    -i) ip=$2; shift 2;;
+  esac
+done
+shift
+
+if [[ -z $ip ]]; then
+  echo "$0: crate not specified" >&2
+  exit 1
+fi
+
+if [[ $ip =~ ^\. ]]; then
+  echo "$0: invalid address: $ip" >&2
+  exit 1
+fi
+
+case $1 in
+  '')
+    status "$ip"
+  ;;
+  on)
+    power "$ip" ON
+  ;;
+  off)
+    power "$ip" OFF
+  ;;
+  *)
+    echo "$0: invalid command: $1" >&2
+    exit 1
+  ;;
+esac

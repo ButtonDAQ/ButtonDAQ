@@ -49,10 +49,10 @@ void Sorter::CreateThread(){
 
   Sorter_args* tmp_args=new Sorter_args();
   tmp_args->m_data = m_data;
-  tmp_args->readout = &(m_data->readout);
-  tmp_args->readout_mutex = &(m_data->readout_mutex);
-  tmp_args->sorted_readout = &(m_data->sorted_readout);
-  tmp_args->sorted_readout_mutex = &(m_data->sorted_readout_mutex);
+  //tmp_args->readout = &(m_data->readout);
+  //tmp_args->readout_mutex = &(m_data->readout_mutex);
+  //tmp_args->sorted_readout = &(m_data->sorted_readout);
+  //tmp_args->sorted_readout_mutex = &(m_data->sorted_readout_mutex);
   args.push_back(tmp_args);
   
   std::stringstream tmp;
@@ -77,39 +77,52 @@ void Sorter::Thread(Thread_args* arg){
 
   Sorter_args* args=reinterpret_cast<Sorter_args*>(arg);
 
-  args->readout_mutex->lock();
-  if(!args->readout->size()){
-    args->readout_mutex->unlock();
+  args->m_data->readout_mutex.lock();
+  if(!args->m_data->readout.size()){
+    args->m_data->readout_mutex.unlock();
     usleep(100);
     return;
   }
-  std::swap(*args->readout, args->in_progress);
-  args->readout_mutex->unlock();
-  
-  for(unsigned int i=0; i<args->in_progress.size(); i++){
-    
-    Job* tmp_job= new Job("sorting");
-    Sorter_args* tmp_args = new Sorter_args;
-    tmp_args->m_data=args->m_data;
+
+  std::swap(args->m_data->readout, args->in_progress);
+  args->m_data->readout_mutex.unlock();
+   
+  for(size_t i=0; i<args->in_progress.size(); i++){
+    //    Job* tmp_job= new Job("sorting");
+    args->tmp_job = args->job_pool.GetNew("sorting");
+
+    if(args->tmp_job->data == 0){
+      args->tmp_args = new Sorter_args;
+      args->tmp_args->m_data=args->m_data;
+
+      //    Sorter_args* tmp_args = new Sorter_args;
+      args->tmp_job->data=args->tmp_args;
+    }
+    else args->tmp_args = reinterpret_cast<Sorter_args*>(args->tmp_job->data);
+
     //printf("p1 %p\n",args->in_progress.front().get());
-    tmp_args->time_slice =  std::move(args->in_progress.front());
+    args->tmp_args->time_slice = std::move(args->in_progress.front());
+
     //printf("p2 %p\n",args->in_progress.front().get());
     //printf("p3 %p\n",tmp_args->time_slice.get());
     args->in_progress.pop();
+
     //printf("p4 %p\n",tmp_args->time_slice.get());
-    tmp_args->sorted_readout = args->sorted_readout;
-    tmp_args->sorted_readout_mutex = args->sorted_readout_mutex;
-    tmp_job->data=tmp_args;
-    tmp_job->func=SortData;
-    tmp_job->fail_func=FailSort;
-    if(!args->m_data->job_queue.AddJob(tmp_job)) printf("ERROR!!!\n");
-    
+    //args->tmp_args->sorted_readout = args->sorted_readout;
+    //args->tmp_args->sorted_readout_mutex = args->sorted_readout_mutex;
+    args->tmp_job->data=args->tmp_args;
+    args->tmp_job->func=SortData;
+    args->tmp_job->fail_func=FailSort;
+    args->tmp_job->out_pool= &args->job_pool;
+    //printf("d1\n");
+    if(!args->m_data->job_queue.AddJob(args->tmp_job)) printf("ERROR!!!\n");
+
   }
   
   
 }
 
-bool Sorter::SortData(void* data){
+bool Sorter::SortData(void*& data){
 
   Sorter_args* args=reinterpret_cast<Sorter_args*>(data);
 
@@ -122,25 +135,26 @@ bool Sorter::SortData(void* data){
 				    return a.sync_time < b.sync_time;
                                   });
   //printf("d2\n");
-   args->sorted_readout_mutex->lock();
+   args->m_data->sorted_readout_mutex.lock();
    //printf("d3\n");
-   args->sorted_readout->emplace(std::move(args->time_slice)); //Ben this is bad and will lead to an unsorted queue dont use a queue;
+   args->m_data->sorted_readout.emplace(std::move(args->time_slice)); //Ben this is bad and will lead to an unsorted queue dont use a queue;
    //printf("d4\n");
-   args->sorted_readout_mutex->unlock(); 
+   args->m_data->sorted_readout_mutex.unlock(); 
    //printf("d5\n");
-   delete args;
-   args=0;
-   data=0;
+   //delete args;
+   //args=0;
+   //data=0;
    //printf("d6\n");
    return true;
 }
 
-void Sorter::FailSort(void* data){
+void Sorter::FailSort(void*& data){
 
-  Sorter_args* args=reinterpret_cast<Sorter_args*>(data);
-  delete args;
-  args=0;
-  data=0;
+  //if(data!=0){
+    //  Sorter_args* args=reinterpret_cast<Sorter_args*>(data);
+    //delete args;
+    //args=0;
+  //data=0;
 
   
 }

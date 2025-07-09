@@ -9,13 +9,13 @@
 //#include "TTree.h"
 
 #include "Store.h"
-#include "BoostStore.h"
+//#include "BoostStore.h"
 #include "DAQDataModelBase.h"
 #include "DAQLogging.h"
 #include "DAQUtilities.h"
 #include "TimeSlice.h"
-
 #include "HandleList.h"
+#include <atomic>
 
 #include <zmq.hpp>
 
@@ -69,7 +69,7 @@ class DataModel : public DAQDataModelBase {
   unsigned int run_configuration;
   unsigned long readout_num;  
   
-  unsigned int thread_num;
+  std::atomic<unsigned int> thread_num;
   unsigned int thread_cap;
   
   JobQueue job_queue;

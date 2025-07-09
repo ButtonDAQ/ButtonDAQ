@@ -23,14 +23,16 @@ struct Sorter_args:Thread_args{
 
   Sorter_args();
   ~Sorter_args();
-  DataModel* m_data;
-  std::queue<std::unique_ptr<TimeSlice>>* readout;
-  std::mutex* readout_mutex;
-  std::queue<std::unique_ptr<TimeSlice>>* sorted_readout;
-  std::mutex* sorted_readout_mutex;
+  DataModel* m_data = 0;
+  //std::queue<std::unique_ptr<TimeSlice>>* readout = 0;
+  //std::mutex* readout_mutex = 0;
+  //std::queue<std::unique_ptr<TimeSlice>>* sorted_readout = 0;
+  //std::mutex* sorted_readout_mutex = 0;
   std::queue<std::unique_ptr<TimeSlice>> in_progress;
   std::unique_ptr<TimeSlice> time_slice;
-  
+  Pool<Job> job_pool;
+  Job* tmp_job = 0;
+  Sorter_args* tmp_args = 0;
 };
 
 /**
@@ -64,8 +66,8 @@ class Sorter: public Tool {
   int m_freethreads; ///< Keeps track of free threads
   unsigned long m_threadnum; ///< Counter for unique naming of threads
 
-  static bool SortData(void* data);
-  static void FailSort(void* data);
+  static bool SortData(void*& data);
+  static void FailSort(void*& data);
   
 };
 

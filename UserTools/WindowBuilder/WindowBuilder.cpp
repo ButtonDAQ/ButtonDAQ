@@ -56,10 +56,10 @@ void WindowBuilder::CreateThread(){
 
   WindowBuilder_args* tmp_args=new WindowBuilder_args();
   tmp_args->m_data = m_data;
-  tmp_args->triggered_readout = &(m_data->triggered_readout);
-  tmp_args->triggered_readout_mutex = &(m_data->triggered_readout_mutex);
-  tmp_args->final_readout = &(m_data->final_readout);
-  tmp_args->final_readout_mutex = &(m_data->sorted_readout_mutex);
+  //tmp_args->triggered_readout = &(m_data->triggered_readout);
+  //tmp_args->triggered_readout_mutex = &(m_data->triggered_readout_mutex);
+  //tmp_args->final_readout = &(m_data->final_readout);
+  //tmp_args->final_readout_mutex = &(m_data->sorted_readout_mutex);
   tmp_args->trigger_offset = &trigger_offset;
   tmp_args->pre_trigger = &pre_trigger;
   tmp_args->post_trigger = &post_trigger;
@@ -87,55 +87,62 @@ void WindowBuilder::Thread(Thread_args* arg){
 
   WindowBuilder_args* args=reinterpret_cast<WindowBuilder_args*>(arg);
 
-  args->triggered_readout_mutex->lock();
-  if(!args->triggered_readout->size()){
-    args->triggered_readout_mutex->unlock();
+  args->m_data->triggered_readout_mutex.lock();
+  if(!args->m_data->triggered_readout.size()){
+    args->m_data->triggered_readout_mutex.unlock();
     usleep(100);
     return;
   }
-  std::swap(*args->triggered_readout, args->in_progress);
-  args->triggered_readout_mutex->unlock();
+  std::swap(args->m_data->triggered_readout, args->in_progress);
+  args->m_data->triggered_readout_mutex.unlock();
   
-  for(unsigned int i=0; i<args->in_progress.size(); i++){
+  for(size_t i=0; i<args->in_progress.size(); i++){
     
-    Job* tmp_job= new Job("window_building");
-    WindowBuilder_args* tmp_args = new WindowBuilder_args;
-    tmp_args->m_data=args->m_data;
+    //Job* tmp_job= new Job("window_building");
+    args->tmp_job = args->job_pool.GetNew("window_building");
+
+    if(args->tmp_job->data == 0){
+      args->tmp_args = new WindowBuilder_args;
+      args->tmp_args->m_data=args->m_data;
+      args->tmp_job->data=args->tmp_args;
+    }
+    else args->tmp_args = reinterpret_cast<WindowBuilder_args*>(args->tmp_job->data);
     //printf("p1 %p\n",args->in_progress.front().get());
-    tmp_args->time_slice =  std::move(args->in_progress.front());
+    args->tmp_args->time_slice =  std::move(args->in_progress.front());
     //printf("p2 %p\n",args->in_progress.front().get());
     //printf("p3 %p\n",tmp_args->time_slice.get());
     args->in_progress.pop();
     //printf("p4 %p\n",tmp_args->time_slice.get());
-    tmp_args->final_readout = args->final_readout;
-    tmp_args->final_readout_mutex = args->final_readout_mutex;
-    tmp_args->trigger_offset = args->trigger_offset;
-    tmp_args->pre_trigger = args->pre_trigger;
-    tmp_args->post_trigger = args->post_trigger;
-    tmp_job->data=tmp_args;
-    tmp_job->func=SelectData;
-    tmp_job->fail_func=FailSelect;
-    if(!args->m_data->job_queue.AddJob(tmp_job)) printf("ERROR!!!\n");
+    //tmp_args->final_readout = args->final_readout;
+    //tmp_args->final_readout_mutex = args->final_readout_mutex;
+    args->tmp_args->trigger_offset = args->trigger_offset;
+    args->tmp_args->pre_trigger = args->pre_trigger;
+    args->tmp_args->post_trigger = args->post_trigger;
+    //tmp_job->data=tmp_args;
+    args->tmp_job->func=SelectData;
+    args->tmp_job->fail_func=FailSelect;
+    args->tmp_job->out_pool= &args->job_pool;
+    if(!args->m_data->job_queue.AddJob(args->tmp_job)) printf("ERROR!!!\n");
     
   }
   
   
 }
 
-bool WindowBuilder::SelectData(void* data){
+bool WindowBuilder::SelectData(void*& data){
   
   WindowBuilder_args* args=reinterpret_cast<WindowBuilder_args*>(data);
   
   //printf("d1\n");
-  std::vector<TriggerGroup> trigger_groups;
+  args->trigger_groups.clear();
   
-  std::map<unsigned short, bool> veto;
+  args->veto.clear();
   
   //combine triggers together
   
-  for( unsigned int i=0; i< args->time_slice->triggers.size(); i++){
-    if(veto.count(i)) continue;
-    veto[i]=true;
+  for(size_t i=0; i< args->time_slice->triggers.size(); i++){
+    if(args->veto.count(i)) continue;
+    args->veto[i]=true;
     TriggerGroup tmp_trigger_group;
     
     tmp_trigger_group.triggers.push_back(args->time_slice->triggers.at(i));
@@ -143,73 +150,86 @@ bool WindowBuilder::SelectData(void* data){
     tmp_trigger_group.min = args->time_slice->triggers.at(i).time.bits() + (*args->trigger_offset)[args->time_slice->triggers.at(i).type] - (*args->pre_trigger)[args->time_slice->triggers.at(i).type];
     tmp_trigger_group.max = args->time_slice->triggers.at(i).time.bits() + (*args->trigger_offset)[args->time_slice->triggers.at(i).type] + (*args->post_trigger)[args->time_slice->triggers.at(i).type];
     
-    for( unsigned int j=i+1; j< args->time_slice->triggers.size(); j++){
-      if(args->time_slice->triggers.at(j).time.bits() > tmp_trigger_group.min && args->time_slice->triggers.at(j).time.bits()< tmp_trigger_group.max){
-	veto[j]=true;
+    for(size_t j=i+1; j< args->time_slice->triggers.size(); j++){
+      uint64_t min = args->time_slice->triggers.at(j).time.bits() + (*args->trigger_offset)[args->time_slice->triggers.at(j).type] - (*args->pre_trigger)[args->time_slice->triggers.at(j).type];
+      uint64_t max = args->time_slice->triggers.at(j).time.bits() + (*args->trigger_offset)[args->time_slice->triggers.at(j).type] + (*args->post_trigger)[args->time_slice->triggers.at(j).type];
+      if(max > tmp_trigger_group.min && min < tmp_trigger_group.max){
+	args->veto[j]=true;
 	tmp_trigger_group.triggers.push_back(args->time_slice->triggers.at(j));
-	if(args->time_slice->triggers.at(j).time.bits() - (*args->pre_trigger)[args->time_slice->triggers.at(j).type] < tmp_trigger_group.min) tmp_trigger_group.min = args->time_slice->triggers.at(j).time.bits() - (*args->pre_trigger)[args->time_slice->triggers.at(j).type];
-	if(args->time_slice->triggers.at(j).time.bits() + (*args->post_trigger)[args->time_slice->triggers.at(j).type] > tmp_trigger_group.max) tmp_trigger_group.max = args->time_slice->triggers.at(j).time.bits() - (*args->post_trigger)[args->time_slice->triggers.at(j).type];
+	if(min < tmp_trigger_group.min) tmp_trigger_group.min = min;
+	if(max > tmp_trigger_group.max) tmp_trigger_group.max = max;
 		
       } 
     }
     
-    trigger_groups.push_back(tmp_trigger_group);
+    args->trigger_groups.push_back(tmp_trigger_group);
     
   }
+
+
   
   // looping over triggers to add hits
-  
-  std::vector<TimeSlice*> time_slices;
-  for(unsigned int i=0; i< trigger_groups.size(); i++){
+  args->time_slices.clear();  
+  //std::vector<TimeSlice*> time_slices;
+  for(size_t i=0; i< args->trigger_groups.size(); i++){
+
+    //    std::cout<<"num of triggers ben = "<<args->trigger_groups.at(i).triggers.size()<<std::endl;
+    //args->trigger_groups.at(i).triggers.at(0).Print();
 
     TimeSlice* tmp = new TimeSlice;
-    tmp->triggers=trigger_groups.at(i).triggers;
-    tmp->time=trigger_groups.at(i).min;
+    tmp->triggers=args->trigger_groups.at(i).triggers;
+    tmp->time=args->trigger_groups.at(i).min;
 
-    bool skip=false;
-    std::vector<Hit>::iterator min_it;
-    std::vector<Hit>::iterator max_it;
+    //std::cout<<"num of triggers after = "<<tmp->triggers.size()<<std::endl;
+    //tmp->triggers.at(0).Print();
+    
+    args->skip=false;
+    // std::vector<Hit>::iterator min_it;
+    //std::vector<Hit>::iterator max_it;
     
     for(std::vector<Hit>::iterator it=args->time_slice->hits.begin(); it!= args->time_slice->hits.end(); it++){
-      if(!skip){
-	min_it=it;
-	skip=true;
-      if(it->sync_time.bits()<trigger_groups.at(i).min) continue;
-      if(it->sync_time.bits()>trigger_groups.at(i).max) break;
+      if(it->sync_time.bits()<args->trigger_groups.at(i).min) continue;
+      if(it->sync_time.bits()>args->trigger_groups.at(i).max) break;
+      if(!args->skip){
+	args->min_it=it;
+	args->skip=true;
       }
-      max_it=it;
-      
-      
+      args->max_it=it; 
     }
-    tmp->hits.insert(tmp->hits.end(), min_it, max_it);
-    time_slices.push_back(tmp);
+    
+    if(args->skip){
+      args->max_it++;
+      tmp->hits.insert(tmp->hits.end(), args->min_it, args->max_it);
+    }   
+    args->time_slices.push_back(tmp);
+    tmp = 0;
   }
 
   
   
   //printf("d2\n");
-   args->final_readout_mutex->lock();
+   args->m_data->final_readout_mutex.lock();
    //printf("d3\n");
-   for(unsigned int i=0; i< time_slices.size(); i++){
-     args->final_readout->emplace(std::move(time_slices.at(i))); //Ben this is bad and will lead to an unsorted queue dont use a queue;
-     time_slices.at(i)=0;
+   for(size_t i=0; i< args->time_slices.size(); i++){
+     args->m_data->final_readout.emplace(std::move(args->time_slices.at(i))); //Ben this is bad and will lead to an unsorted queue dont use a queue;
+     args->time_slices.at(i)=0;
    }
    //printf("d4\n");
-   args->final_readout_mutex->unlock(); 
+   args->m_data->final_readout_mutex.unlock(); 
    //printf("d5\n");
-   delete args;
-   args=0;
-   data=0;
+   // delete args;
+   //args=0;
+   //data=0;
    //printf("d6\n");
    return true;
 }
 
-void WindowBuilder::FailSelect(void* data){
+void WindowBuilder::FailSelect(void*& data){
 
-  WindowBuilder_args* args=reinterpret_cast<WindowBuilder_args*>(data);
-  delete args;
-  args=0;
-  data=0;
+  // WindowBuilder_args* args=reinterpret_cast<WindowBuilder_args*>(data);
+  //delete args;
+  //args=0;
+  //data=0;
 
   
 }
